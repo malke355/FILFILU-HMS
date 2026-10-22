@@ -182,7 +182,7 @@ export function SchedulePage() {
                   return (
                     <li
                       key={a.id}
-                      className="rounded-xl border border-navy-900/8 bg-white/80 p-2 text-xs"
+                      className="rounded-xl border border-navy-900/8 bg-surface p-2 text-xs"
                       style={{ borderLeftWidth: 3, borderLeftColor: shift?.color ?? '#0D9488' }}
                     >
                       <p className="font-semibold">

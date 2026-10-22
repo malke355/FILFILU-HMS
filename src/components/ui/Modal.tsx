@@ -25,7 +25,7 @@ export function Modal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-navy-950/50 p-4 sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 p-4 backdrop-blur-sm sm:items-center">
       <button
         type="button"
         className="absolute inset-0 cursor-default"
@@ -36,7 +36,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative z-10 w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl"
+        className="relative z-10 w-full max-w-lg rounded-2xl border border-navy-900/8 bg-surface p-6 shadow-2xl"
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 className="font-display text-xl text-navy-900">{title}</h2>

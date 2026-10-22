@@ -1,21 +1,53 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --font-sans: 'Source Sans 3', ui-sans-serif, sans-serif;
-  --font-display: 'Fraunces', ui-serif, Georgia, serif;
-  --color-navy-950: #061326;
-  --color-navy-900: #0b1f3a;
-  --color-navy-800: #123056;
-  --color-navy-700: #1a406e;
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+
+  /* Semantic tokens: overridden in .dark so every page follows the theme */
+  --color-navy-950: #020617;
+  --color-navy-900: #0f172a;
+  --color-navy-800: #1e293b;
+  --color-navy-700: #334155;
+  --color-ink-700: #475569;
+  --color-ink-500: #64748b;
+  --color-sand-50: #f5f7fb;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f5f9;
   --color-teal-600: #0d9488;
   --color-teal-500: #14b8a6;
-  --color-teal-50: #f0fdfa;
-  --color-sand-50: #f7faf9;
-  --color-ink-700: #334155;
-  --color-ink-500: #64748b;
-  --color-danger-600: #b91c1c;
+  --color-teal-50: #ecfdf7;
+  --color-danger-600: #dc2626;
   --color-warn-600: #b45309;
   --color-ok-600: #047857;
+
+  /* Fixed brand colors: same in both themes */
+  --color-brand-400: #2dd4bf;
+  --color-brand-500: #14b8a6;
+  --color-brand-600: #0d9488;
+  --color-brand-700: #0f766e;
+  --color-sky-brand: #0ea5e9;
+}
+
+.dark {
+  --color-navy-950: #000000;
+  --color-navy-900: #e8eef7;
+  --color-navy-800: #c8d3e3;
+  --color-navy-700: #a5b4c8;
+  --color-ink-700: #a3b1c4;
+  --color-ink-500: #8292a8;
+  --color-sand-50: #070b16;
+  --color-surface: #0e1525;
+  --color-surface-2: #151e31;
+  --color-teal-600: #2dd4bf;
+  --color-teal-500: #5eead4;
+  --color-teal-50: #0d2a2b;
+  --color-danger-600: #f87171;
+  --color-warn-600: #fbbf24;
+  --color-ok-600: #34d399;
+  color-scheme: dark;
 }
 
 @layer base {
@@ -25,11 +57,9 @@
 
   body {
     @apply m-0 min-h-screen bg-sand-50 font-sans text-navy-900 antialiased;
-    background-image:
-      radial-gradient(ellipse 80% 50% at 10% -10%, rgb(20 184 166 / 0.18), transparent 55%),
-      radial-gradient(ellipse 60% 40% at 100% 0%, rgb(11 31 58 / 0.1), transparent 50%),
-      linear-gradient(180deg, #f7faf9 0%, #eef6f4 40%, #f4f7f8 100%);
-    background-attachment: fixed;
+    transition:
+      background-color 0.25s ease,
+      color 0.25s ease;
   }
 
   #root {
@@ -40,15 +70,20 @@
   h2,
   h3 {
     font-family: var(--font-display);
-    letter-spacing: -0.02em;
+    font-weight: 700;
+    letter-spacing: -0.025em;
   }
 
   a {
-    @apply text-teal-600 transition-colors hover:text-navy-800;
+    @apply text-teal-600 transition-colors hover:text-teal-500;
   }
 
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-teal-600;
+    @apply outline-2 outline-offset-2 outline-brand-500;
+  }
+
+  select option {
+    @apply bg-surface text-navy-900;
   }
 }
 
@@ -58,11 +93,30 @@
   }
 
   .surface-panel {
-    @apply rounded-2xl border border-navy-900/8 bg-white/80 shadow-[0_12px_40px_-24px_rgb(11_31_58_/_0.45)] backdrop-blur-sm;
+    @apply rounded-2xl border border-navy-900/8 bg-surface shadow-[0_1px_2px_rgb(15_23_42_/_0.04),0_8px_24px_-12px_rgb(15_23_42_/_0.12)];
+  }
+
+  .dark .surface-panel {
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset;
   }
 
   .text-balance {
     text-wrap: balance;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-brand-500 to-sky-brand bg-clip-text text-transparent;
+  }
+
+  .bg-brand-gradient {
+    background-image: linear-gradient(135deg, #0d9488 0%, #0891b2 55%, #2563eb 100%);
+  }
+
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, rgb(148 163 184 / 0.12) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(148 163 184 / 0.12) 1px, transparent 1px);
+    background-size: 40px 40px;
   }
 }
 
@@ -74,6 +128,16 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
   }
 }
 
@@ -95,6 +159,19 @@
   animation: fade-up 0.65s ease-out 0.12s both;
 }
 
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
 .animate-soft-pulse {
   animation: soft-pulse 2.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-fade-up-delay,
+  .animate-float,
+  .animate-soft-pulse {
+    animation: none;
+  }
 }

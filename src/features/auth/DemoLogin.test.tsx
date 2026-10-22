@@ -3,22 +3,37 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { AuthProvider } from './AuthContext'
+import { ThemeProvider } from '@/features/theme/ThemeContext'
 import { LoginPage } from '@/pages/LoginPage'
 
-describe('Demo login', () => {
-  it('labels demo login and continues with a role', async () => {
-    const user = userEvent.setup()
-    render(
-      <MemoryRouter>
+function renderLogin() {
+  return render(
+    <MemoryRouter>
+      <ThemeProvider>
         <AuthProvider>
           <LoginPage />
         </AuthProvider>
-      </MemoryRouter>,
-    )
+      </ThemeProvider>
+    </MemoryRouter>,
+  )
+}
 
-    expect(screen.getByText(/demo login/i)).toBeInTheDocument()
-    expect(screen.getByText(/not security/i)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /continue with demo role/i }))
+describe('Login page', () => {
+  it('signs in with the default admin role', async () => {
+    const user = userEvent.setup()
+    renderLogin()
+
+    expect(screen.getByRole('heading', { name: /welcome back/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /continue as admin/i }))
     expect(localStorage.getItem('filfilu-demo-session')).toContain('admin')
+  })
+
+  it('signs in with a selected role', async () => {
+    const user = userEvent.setup()
+    renderLogin()
+
+    await user.click(screen.getByRole('radio', { name: /nurse/i }))
+    await user.click(screen.getByRole('button', { name: /continue as nurse/i }))
+    expect(localStorage.getItem('filfilu-demo-session')).toContain('nurse')
   })
 })
