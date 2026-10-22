@@ -1,0 +1,100 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Source Sans 3', ui-sans-serif, sans-serif;
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+  --color-navy-950: #061326;
+  --color-navy-900: #0b1f3a;
+  --color-navy-800: #123056;
+  --color-navy-700: #1a406e;
+  --color-teal-600: #0d9488;
+  --color-teal-500: #14b8a6;
+  --color-teal-50: #f0fdfa;
+  --color-sand-50: #f7faf9;
+  --color-ink-700: #334155;
+  --color-ink-500: #64748b;
+  --color-danger-600: #b91c1c;
+  --color-warn-600: #b45309;
+  --color-ok-600: #047857;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply m-0 min-h-screen bg-sand-50 font-sans text-navy-900 antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgb(20 184 166 / 0.18), transparent 55%),
+      radial-gradient(ellipse 60% 40% at 100% 0%, rgb(11 31 58 / 0.1), transparent 50%),
+      linear-gradient(180deg, #f7faf9 0%, #eef6f4 40%, #f4f7f8 100%);
+    background-attachment: fixed;
+  }
+
+  #root {
+    @apply min-h-screen;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  a {
+    @apply text-teal-600 transition-colors hover:text-navy-800;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-teal-600;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .surface-panel {
+    @apply rounded-2xl border border-navy-900/8 bg-white/80 shadow-[0_12px_40px_-24px_rgb(11_31_58_/_0.45)] backdrop-blur-sm;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.55s ease-out both;
+}
+
+.animate-fade-up-delay {
+  animation: fade-up 0.65s ease-out 0.12s both;
+}
+
+.animate-soft-pulse {
+  animation: soft-pulse 2.8s ease-in-out infinite;
+}
