@@ -154,7 +154,7 @@ function PublicShell() {
       </main>
       <footer className="border-t border-navy-900/6 py-8">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 text-sm text-ink-500 sm:flex-row sm:px-6">
-          <Logo className="scale-90" />
+          <Logo className="scale-90" showTagline />
           <p>© {new Date().getFullYear()} Filfilu Hospital · Duty Schedule System</p>
         </div>
       </footer>
