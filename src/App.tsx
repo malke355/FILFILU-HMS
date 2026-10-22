@@ -4,7 +4,7 @@ import { AppRouter } from '@/app/router'
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/FILFILU-HMS">
       <AuthProvider>
         <AppRouter />
       </AuthProvider>
