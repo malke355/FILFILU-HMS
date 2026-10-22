@@ -4,6 +4,12 @@ Demonstration frontend for the **Filfilu Hospital Duty Schedule Management Syste
 
 Phase 1 is **frontend only**: React + TypeScript + Vite + Tailwind + React Router + Lucide + React Hook Form + Zod. There is **no backend**, Prisma, PostgreSQL, or real authentication.
 
+## Live demo
+
+**https://malke355.github.io/FILFILU-HMS/**
+
+Deployed automatically to GitHub Pages on every push to `main`.
+
 ## Quick start
 
 ```bash
@@ -11,7 +17,7 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints (usually `http://localhost:5173`).
+Open the URL Vite prints (usually `http://localhost:5173`). Local dev uses Vite’s root; production builds use `base: '/FILFILU-HMS/'` for project Pages.
 
 ### Other scripts
 
