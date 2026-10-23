@@ -857,6 +857,33 @@
         document.getElementById("successText").textContent =
           `${name}, your ${department} visit is requested for ${date}.`;
       });
+
+      /* Contact form — mock submit */
+      const contactForm = document.getElementById("contactForm");
+      const contactMsg = document.getElementById("contactMsg");
+      contactForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const name = contactForm.elements.name.value.trim();
+        // TODO: POST contact payload to backend (name, email, topic, message)
+        contactMsg.style.display = "block";
+        contactMsg.textContent = `Thanks, ${name}. Your message was recorded (demo).`;
+        contactForm.reset();
+      });
+
+      /* Nav active state while scrolling */
+      const navLinks = [...document.querySelectorAll(".nav-pill a")];
+      const sections = ["home", "about", "services", "departments", "contact"]
+        .map((id) => document.getElementById(id))
+        .filter(Boolean);
+      const setActive = () => {
+        let current = "home";
+        for (const sec of sections) {
+          if (sec.getBoundingClientRect().top <= 120) current = sec.id;
+        }
+        navLinks.forEach((a) => a.classList.toggle("active", a.getAttribute("href") === `#${current}`));
+      };
+      addEventListener("scroll", setActive, { passive: true });
+      setActive();
     })();
   </script>
 </body>
