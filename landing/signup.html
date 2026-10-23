@@ -247,9 +247,10 @@
           msg.classList.add("show");
           return;
         }
-        msg.textContent = `Welcome, ${first}! Opening your ${role} workspace…`;
+        const label = result.session.meta?.label || role;
+        msg.textContent = `Welcome, ${first}! ${label} role assigned. Opening your workspace…`;
         msg.classList.add("show");
-        setTimeout(() => { location.href = Auth.dashboardPath(); }, 700);
+        setTimeout(() => { location.href = Auth.dashboardPath(); }, 650);
       });
     })();
   </script>

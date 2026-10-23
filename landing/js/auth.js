@@ -1,136 +1,175 @@
 /**
  * Filfilu demo auth + RBAC + RLS (client-side mock).
- * TODO: replace with real JWT/session cookies and server-side policies.
+ * TODO: replace with real JWT/httpOnly cookies and Postgres RLS policies.
  */
 (function (global) {
   const SESSION_KEY = "filfilu.session";
 
   /** @typedef {"admin"|"doctor"|"nurse"|"patient"} Role */
 
+  const ROLE_META = {
+    admin: {
+      label: "Administrator",
+      short: "Admin",
+      accent: "#1D6FE0",
+      greeting: "Hospital operations command center",
+      blurb: "Manage staff, publish duty schedules, approve exchanges, and monitor hospital-wide activity.",
+    },
+    doctor: {
+      label: "Doctor",
+      short: "Doctor",
+      accent: "#0F766E",
+      greeting: "Clinical workspace",
+      blurb: "Review your roster, assigned patients, today’s visits, and shift-swap requests.",
+    },
+    nurse: {
+      label: "Nurse",
+      short: "Nurse",
+      accent: "#7C3AED",
+      greeting: "Ward care workspace",
+      blurb: "Track ward patients, clinic lists, nursing shifts, and handoff notes.",
+    },
+    patient: {
+      label: "Patient",
+      short: "Patient",
+      accent: "#0369A1",
+      greeting: "Personal care portal",
+      blurb: "View upcoming visits, request appointments, and find doctors on duty.",
+    },
+  };
+
   const PERMISSIONS = {
     admin: [
-      "dashboard:admin",
-      "staff:read",
-      "staff:write",
-      "departments:read",
-      "departments:write",
-      "schedule:read",
-      "schedule:write",
-      "schedule:publish",
-      "patients:read_all",
-      "appointments:read_all",
-      "reports:read",
-      "exchanges:approve",
+      "dashboard:admin", "staff:read", "staff:write", "departments:read", "departments:write",
+      "schedule:read", "schedule:write", "schedule:publish", "patients:read_all",
+      "appointments:read_all", "appointments:manage", "reports:read", "exchanges:approve",
+      "notifications:read_own", "roles:assign",
     ],
     doctor: [
-      "dashboard:doctor",
-      "schedule:read_own",
-      "patients:read_assigned",
-      "appointments:read_own",
-      "appointments:write_own",
-      "exchanges:request",
-      "notifications:read_own",
+      "dashboard:doctor", "schedule:read_own", "patients:read_assigned", "appointments:read_own",
+      "appointments:write_own", "exchanges:request", "notifications:read_own", "notes:write_own",
     ],
     nurse: [
-      "dashboard:nurse",
-      "schedule:read_own",
-      "patients:read_ward",
-      "appointments:read_ward",
-      "exchanges:request",
-      "notifications:read_own",
+      "dashboard:nurse", "schedule:read_own", "patients:read_ward", "appointments:read_ward",
+      "exchanges:request", "notifications:read_own", "vitals:write_ward",
     ],
     patient: [
-      "dashboard:patient",
-      "appointments:read_own",
-      "appointments:request",
-      "doctors:read_public",
-      "profile:read_own",
-      "profile:write_own",
-      "notifications:read_own",
+      "dashboard:patient", "appointments:read_own", "appointments:request", "doctors:read_public",
+      "profile:read_own", "profile:write_own", "notifications:read_own",
     ],
   };
 
   const NAV = {
     admin: [
-      { id: "overview", label: "Overview" },
-      { id: "staff", label: "Staff" },
-      { id: "schedule", label: "Duty schedule" },
-      { id: "appointments", label: "Appointments" },
-      { id: "reports", label: "Reports" },
+      { id: "overview", label: "Command center", icon: "grid" },
+      { id: "staff", label: "Staff & roles", icon: "users" },
+      { id: "schedule", label: "Duty schedule", icon: "calendar" },
+      { id: "appointments", label: "Appointments", icon: "clipboard" },
+      { id: "exchanges", label: "Approvals", icon: "swap" },
+      { id: "reports", label: "Analytics", icon: "chart" },
     ],
     doctor: [
-      { id: "overview", label: "Overview" },
-      { id: "schedule", label: "My shifts" },
-      { id: "patients", label: "My patients" },
-      { id: "appointments", label: "Appointments" },
-      { id: "exchanges", label: "Shift swaps" },
+      { id: "overview", label: "Today", icon: "grid" },
+      { id: "schedule", label: "My roster", icon: "calendar" },
+      { id: "patients", label: "My patients", icon: "heart" },
+      { id: "appointments", label: "Clinic visits", icon: "clipboard" },
+      { id: "exchanges", label: "Shift swaps", icon: "swap" },
+      { id: "notifications", label: "Alerts", icon: "bell" },
     ],
     nurse: [
-      { id: "overview", label: "Overview" },
-      { id: "schedule", label: "My shifts" },
-      { id: "ward", label: "Ward board" },
-      { id: "appointments", label: "Clinic list" },
-      { id: "exchanges", label: "Shift swaps" },
+      { id: "overview", label: "Ward overview", icon: "grid" },
+      { id: "ward", label: "Patient board", icon: "bed" },
+      { id: "schedule", label: "My shifts", icon: "calendar" },
+      { id: "appointments", label: "Clinic list", icon: "clipboard" },
+      { id: "exchanges", label: "Shift swaps", icon: "swap" },
+      { id: "notifications", label: "Handoffs", icon: "bell" },
     ],
     patient: [
-      { id: "overview", label: "Overview" },
-      { id: "appointments", label: "My visits" },
-      { id: "doctors", label: "Find a doctor" },
-      { id: "profile", label: "Profile" },
+      { id: "overview", label: "Home", icon: "grid" },
+      { id: "appointments", label: "My visits", icon: "clipboard" },
+      { id: "doctors", label: "Find a doctor", icon: "stethoscope" },
+      { id: "notifications", label: "Updates", icon: "bell" },
+      { id: "profile", label: "My profile", icon: "user" },
     ],
   };
 
-  /* —— Mock database (SAMPLE DATA) —— */
   const DB = {
     users: [
-      { id: "u-admin", role: "admin", name: "Selam Bekele", email: "admin@filfilu.com", password: "filfilu" },
-      { id: "u-doc-1", role: "doctor", name: "Dr. Helen Tesfaye", email: "doctor@filfilu.com", password: "filfilu", staffId: "s-doc-1", dept: "General Medicine" },
-      { id: "u-doc-2", role: "doctor", name: "Dr. Sara Mekonnen", email: "sara@filfilu.com", password: "filfilu", staffId: "s-doc-2", dept: "Cardiology" },
-      { id: "u-nurse-1", role: "nurse", name: "Rahel Abebe", email: "nurse@filfilu.com", password: "filfilu", staffId: "s-nurse-1", ward: "Ward A" },
-      { id: "u-pat-1", role: "patient", name: "Amina Mohammed", email: "patient@filfilu.com", password: "filfilu", patientId: "p-1" },
-      { id: "u-pat-2", role: "patient", name: "Yonas Hailu", email: "yonas@filfilu.com", password: "filfilu", patientId: "p-2" },
+      { id: "u-admin", role: "admin", name: "Selam Bekele", email: "admin@filfilu.com", password: "filfilu", title: "Hospital Administrator" },
+      { id: "u-doc-1", role: "doctor", name: "Dr. Helen Tesfaye", email: "doctor@filfilu.com", password: "filfilu", staffId: "s-doc-1", dept: "General Medicine", title: "Consultant Physician" },
+      { id: "u-doc-2", role: "doctor", name: "Dr. Sara Mekonnen", email: "sara@filfilu.com", password: "filfilu", staffId: "s-doc-2", dept: "Cardiology", title: "Cardiologist" },
+      { id: "u-nurse-1", role: "nurse", name: "Rahel Abebe", email: "nurse@filfilu.com", password: "filfilu", staffId: "s-nurse-1", ward: "Ward A", dept: "Maternity", title: "Senior Nurse" },
+      { id: "u-pat-1", role: "patient", name: "Amina Mohammed", email: "patient@filfilu.com", password: "filfilu", patientId: "p-1", title: "Patient" },
+      { id: "u-pat-2", role: "patient", name: "Yonas Hailu", email: "yonas@filfilu.com", password: "filfilu", patientId: "p-2", title: "Patient" },
     ],
     staff: [
-      { id: "s-doc-1", name: "Dr. Helen Tesfaye", role: "doctor", dept: "General Medicine", status: "active" },
-      { id: "s-doc-2", name: "Dr. Sara Mekonnen", role: "doctor", dept: "Cardiology", status: "active" },
-      { id: "s-doc-3", name: "Dr. Dawit Bekele", role: "doctor", dept: "Pediatrics", status: "active" },
-      { id: "s-nurse-1", name: "Rahel Abebe", role: "nurse", dept: "Maternity", ward: "Ward A", status: "active" },
-      { id: "s-nurse-2", name: "Lidya Tadesse", role: "nurse", dept: "General Medicine", ward: "Ward B", status: "active" },
-      { id: "s-admin", name: "Selam Bekele", role: "admin", dept: "Administration", status: "active" },
+      { id: "s-doc-1", name: "Dr. Helen Tesfaye", role: "doctor", dept: "General Medicine", status: "active", phone: "+251 911 100 001" },
+      { id: "s-doc-2", name: "Dr. Sara Mekonnen", role: "doctor", dept: "Cardiology", status: "active", phone: "+251 911 100 002" },
+      { id: "s-doc-3", name: "Dr. Dawit Bekele", role: "doctor", dept: "Pediatrics", status: "active", phone: "+251 911 100 003" },
+      { id: "s-nurse-1", name: "Rahel Abebe", role: "nurse", dept: "Maternity", ward: "Ward A", status: "active", phone: "+251 911 100 011" },
+      { id: "s-nurse-2", name: "Lidya Tadesse", role: "nurse", dept: "General Medicine", ward: "Ward B", status: "active", phone: "+251 911 100 012" },
+      { id: "s-admin", name: "Selam Bekele", role: "admin", dept: "Administration", status: "active", phone: "+251 911 100 099" },
     ],
     patients: [
-      { id: "p-1", name: "Amina Mohammed", age: 29, doctorId: "s-doc-1", ward: null, condition: "Follow-up" },
-      { id: "p-2", name: "Yonas Hailu", age: 41, doctorId: "s-doc-2", ward: "Ward A", condition: "Cardiac monitoring" },
-      { id: "p-3", name: "Hana Kebede", age: 8, doctorId: "s-doc-3", ward: "Ward B", condition: "Pediatric check" },
-      { id: "p-4", name: "Mulugeta Assefa", age: 55, doctorId: "s-doc-1", ward: "Ward A", condition: "Diabetes review" },
+      { id: "p-1", name: "Amina Mohammed", age: 29, sex: "F", doctorId: "s-doc-1", ward: null, bed: null, condition: "Hypertension follow-up", blood: "O+", phone: "+251 911 200 001" },
+      { id: "p-2", name: "Yonas Hailu", age: 41, sex: "M", doctorId: "s-doc-2", ward: "Ward A", bed: "A-12", condition: "Cardiac monitoring", blood: "A+", phone: "+251 911 200 002" },
+      { id: "p-3", name: "Hana Kebede", age: 8, sex: "F", doctorId: "s-doc-3", ward: "Ward B", bed: "B-03", condition: "Pediatric fever review", blood: "B+", phone: "+251 911 200 003" },
+      { id: "p-4", name: "Mulugeta Assefa", age: 55, sex: "M", doctorId: "s-doc-1", ward: "Ward A", bed: "A-07", condition: "Diabetes review", blood: "AB+", phone: "+251 911 200 004" },
+      { id: "p-5", name: "Kidist Alemu", age: 33, sex: "F", doctorId: "s-doc-2", ward: null, bed: null, condition: "ECG screening", blood: "O-", phone: "+251 911 200 005" },
     ],
     appointments: [
-      { id: "a-1", patientId: "p-1", doctorId: "s-doc-1", date: "2026-10-24", time: "09:30", dept: "General Medicine", status: "confirmed" },
-      { id: "a-2", patientId: "p-1", doctorId: "s-doc-2", date: "2026-10-28", time: "11:00", dept: "Cardiology", status: "requested" },
-      { id: "a-3", patientId: "p-2", doctorId: "s-doc-2", date: "2026-10-23", time: "15:30", dept: "Cardiology", status: "confirmed" },
-      { id: "a-4", patientId: "p-3", doctorId: "s-doc-3", date: "2026-10-25", time: "10:00", dept: "Pediatrics", status: "confirmed" },
-      { id: "a-5", patientId: "p-4", doctorId: "s-doc-1", date: "2026-10-26", time: "14:00", dept: "General Medicine", status: "draft" },
-      { id: "a-6", patientId: "p-2", doctorId: "s-doc-1", date: "2026-10-30", time: "08:45", dept: "General Medicine", status: "confirmed" },
+      { id: "a-1", patientId: "p-1", doctorId: "s-doc-1", date: "2026-10-24", time: "09:30", dept: "General Medicine", status: "confirmed", reason: "BP check" },
+      { id: "a-2", patientId: "p-1", doctorId: "s-doc-2", date: "2026-10-28", time: "11:00", dept: "Cardiology", status: "requested", reason: "Chest discomfort" },
+      { id: "a-3", patientId: "p-2", doctorId: "s-doc-2", date: "2026-10-23", time: "15:30", dept: "Cardiology", status: "confirmed", reason: "Post-op review" },
+      { id: "a-4", patientId: "p-3", doctorId: "s-doc-3", date: "2026-10-25", time: "10:00", dept: "Pediatrics", status: "confirmed", reason: "Fever follow-up" },
+      { id: "a-5", patientId: "p-4", doctorId: "s-doc-1", date: "2026-10-26", time: "14:00", dept: "General Medicine", status: "draft", reason: "HbA1c review" },
+      { id: "a-6", patientId: "p-2", doctorId: "s-doc-1", date: "2026-10-30", time: "08:45", dept: "General Medicine", status: "confirmed", reason: "Meds adjust" },
+      { id: "a-7", patientId: "p-5", doctorId: "s-doc-2", date: "2026-10-24", time: "13:15", dept: "Cardiology", status: "confirmed", reason: "ECG" },
     ],
     shifts: [
-      { id: "sh-1", staffId: "s-doc-1", date: "2026-10-23", slot: "08:00–16:00", dept: "General Medicine", status: "published" },
-      { id: "sh-2", staffId: "s-doc-1", date: "2026-10-24", slot: "08:00–16:00", dept: "General Medicine", status: "published" },
-      { id: "sh-3", staffId: "s-doc-2", date: "2026-10-23", slot: "12:00–20:00", dept: "Cardiology", status: "published" },
-      { id: "sh-4", staffId: "s-nurse-1", date: "2026-10-23", slot: "07:00–19:00", dept: "Maternity", status: "published" },
-      { id: "sh-5", staffId: "s-nurse-1", date: "2026-10-24", slot: "19:00–07:00", dept: "Maternity", status: "draft" },
-      { id: "sh-6", staffId: "s-nurse-2", date: "2026-10-23", slot: "07:00–19:00", dept: "General Medicine", status: "published" },
-      { id: "sh-7", staffId: "s-doc-3", date: "2026-10-25", slot: "08:00–14:00", dept: "Pediatrics", status: "published" },
+      { id: "sh-1", staffId: "s-doc-1", date: "2026-10-23", slot: "08:00–16:00", dept: "General Medicine", status: "published", unit: "OPD 2" },
+      { id: "sh-2", staffId: "s-doc-1", date: "2026-10-24", slot: "08:00–16:00", dept: "General Medicine", status: "published", unit: "OPD 2" },
+      { id: "sh-3", staffId: "s-doc-2", date: "2026-10-23", slot: "12:00–20:00", dept: "Cardiology", status: "published", unit: "Cardio Bay" },
+      { id: "sh-4", staffId: "s-nurse-1", date: "2026-10-23", slot: "07:00–19:00", dept: "Maternity", status: "published", unit: "Ward A" },
+      { id: "sh-5", staffId: "s-nurse-1", date: "2026-10-24", slot: "19:00–07:00", dept: "Maternity", status: "draft", unit: "Ward A" },
+      { id: "sh-6", staffId: "s-nurse-2", date: "2026-10-23", slot: "07:00–19:00", dept: "General Medicine", status: "published", unit: "Ward B" },
+      { id: "sh-7", staffId: "s-doc-3", date: "2026-10-25", slot: "08:00–14:00", dept: "Pediatrics", status: "published", unit: "Peds Clinic" },
     ],
     exchanges: [
-      { id: "ex-1", fromStaffId: "s-doc-1", toStaffId: "s-doc-2", date: "2026-10-27", status: "pending_admin" },
-      { id: "ex-2", fromStaffId: "s-nurse-1", toStaffId: "s-nurse-2", date: "2026-10-26", status: "peer_accepted" },
+      { id: "ex-1", fromStaffId: "s-doc-1", toStaffId: "s-doc-2", date: "2026-10-27", status: "pending_admin", reason: "CME conference" },
+      { id: "ex-2", fromStaffId: "s-nurse-1", toStaffId: "s-nurse-2", date: "2026-10-26", status: "peer_accepted", reason: "Family emergency" },
     ],
     doctorsPublic: [
-      { id: "s-doc-1", name: "Dr. Helen Tesfaye", specialty: "General Medicine", onDuty: true },
-      { id: "s-doc-2", name: "Dr. Sara Mekonnen", specialty: "Cardiology", onDuty: true },
-      { id: "s-doc-3", name: "Dr. Dawit Bekele", specialty: "Pediatrics", onDuty: false },
+      { id: "s-doc-1", name: "Dr. Helen Tesfaye", specialty: "General Medicine", onDuty: true, nextSlot: "Today, 3:30 PM", rating: 4.9 },
+      { id: "s-doc-2", name: "Dr. Sara Mekonnen", specialty: "Cardiology", onDuty: true, nextSlot: "Tomorrow, 11:00 AM", rating: 4.8 },
+      { id: "s-doc-3", name: "Dr. Dawit Bekele", specialty: "Pediatrics", onDuty: false, nextSlot: "Fri, 10:00 AM", rating: 4.7 },
+    ],
+    notifications: [
+      { id: "n-1", role: "admin", text: "2 shift swaps await your approval", time: "12m ago", level: "warn" },
+      { id: "n-2", role: "admin", text: "Duty schedule draft for Mon needs publish", time: "1h ago", level: "info" },
+      { id: "n-3", role: "doctor", text: "New visit request from Amina Mohammed", time: "18m ago", level: "warn" },
+      { id: "n-4", role: "doctor", text: "Lab result ready for Mulugeta Assefa", time: "40m ago", level: "ok" },
+      { id: "n-5", role: "nurse", text: "Ward A bed A-12 vitals due", time: "8m ago", level: "warn" },
+      { id: "n-6", role: "nurse", text: "Handoff note posted for night shift", time: "2h ago", level: "info" },
+      { id: "n-7", role: "patient", text: "Your Cardiology visit is requested", time: "25m ago", level: "info" },
+      { id: "n-8", role: "patient", text: "Reminder: General Medicine visit tomorrow 09:30", time: "3h ago", level: "ok" },
+    ],
+    activity: [
+      { role: "admin", text: "Published 14 shifts for General Medicine", time: "09:12" },
+      { role: "admin", text: "Added Dr. Dawit Bekele to Pediatrics", time: "08:40" },
+      { role: "doctor", text: "Confirmed visit a-3 for Yonas Hailu", time: "10:05" },
+      { role: "doctor", text: "Requested swap with Dr. Sara for Oct 27", time: "09:50" },
+      { role: "nurse", text: "Recorded vitals for bed A-12", time: "10:22" },
+      { role: "nurse", text: "Accepted peer swap for Oct 26", time: "07:15" },
+      { role: "patient", text: "Requested Cardiology appointment", time: "Yesterday" },
+      { role: "patient", text: "Saved Dr. Helen Tesfaye", time: "Mon" },
     ],
   };
+
+  function normalizeRole(value) {
+    const r = String(value || "").trim().toLowerCase();
+    return ROLE_META[r] ? r : null;
+  }
 
   function readSession() {
     try {
@@ -149,103 +188,101 @@
     sessionStorage.removeItem(SESSION_KEY);
   }
 
-  function normalizeRole(value) {
-    const r = String(value || "").trim().toLowerCase();
-    if (r === "admin" || r === "doctor" || r === "nurse" || r === "patient") return r;
-    return null;
+  function toSession(user) {
+    const role = normalizeRole(user.role);
+    return {
+      userId: user.id,
+      role,
+      name: user.name,
+      email: user.email,
+      title: user.title || ROLE_META[role].label,
+      staffId: user.staffId || null,
+      patientId: user.patientId || null,
+      ward: user.ward || null,
+      dept: user.dept || null,
+      meta: ROLE_META[role],
+      permissions: PERMISSIONS[role].slice(),
+      loggedInAt: new Date().toISOString(),
+    };
   }
 
-  function roleFromEmail(email) {
-    const e = email.toLowerCase();
-    if (e.includes("admin")) return "admin";
-    if (e.includes("doctor") || e.includes("dr.")) return "doctor";
-    if (e.includes("nurse")) return "nurse";
-    if (e.includes("patient")) return "patient";
-    return null;
-  }
-
-  function findUser(email, password) {
-    return DB.users.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password,
-    );
-  }
-
+  /** Perfect role assignment: account role always wins when email matches a demo user. */
   function login({ email, password, role }) {
-    const found = findUser(email, password);
+    const wanted = normalizeRole(role);
+    const found = DB.users.find(
+      (u) => u.email.toLowerCase() === String(email || "").trim().toLowerCase(),
+    );
+
     if (found) {
-      const session = {
-        userId: found.id,
-        role: found.role,
-        name: found.name,
-        email: found.email,
-        staffId: found.staffId || null,
-        patientId: found.patientId || null,
-        ward: found.ward || null,
-        dept: found.dept || null,
-      };
+      if (found.password !== password) {
+        return { ok: false, error: "Incorrect password for this account." };
+      }
+      if (wanted && wanted !== found.role) {
+        return {
+          ok: false,
+          error: `This account is assigned the ${ROLE_META[found.role].label} role. Choose “${ROLE_META[found.role].short}” or use another demo account.`,
+        };
+      }
+      const session = toSession(found);
       writeSession(session);
       return { ok: true, session };
     }
 
-    // Demo fallback: any password + selected/inferred role
-    const inferred = normalizeRole(role) || roleFromEmail(email) || "patient";
-    const demoUser = DB.users.find((u) => u.role === inferred) || DB.users[4];
-    const session = {
-      userId: demoUser.id,
-      role: inferred,
-      name: demoUser.name,
-      email: email.trim(),
-      staffId: demoUser.staffId || null,
-      patientId: demoUser.patientId || null,
-      ward: demoUser.ward || null,
-      dept: demoUser.dept || null,
-      demo: true,
-    };
+    // Unknown email: require an explicit role and create a scoped demo session
+    if (!wanted) return { ok: false, error: "Select a workspace role before signing in." };
+    if (!password) return { ok: false, error: "Enter your password." };
+    const template = DB.users.find((u) => u.role === wanted);
+    const session = toSession({
+      ...template,
+      id: `u-demo-${wanted}-${Date.now()}`,
+      name: template.name,
+      email: String(email).trim(),
+      role: wanted,
+    });
+    session.demo = true;
     writeSession(session);
     return { ok: true, session, demo: true };
   }
 
   function signup({ first, last, email, role, password }) {
     const r = normalizeRole(role);
-    if (!r) return { ok: false, error: "Choose a valid role." };
-    // TODO: POST /api/auth/signup
-    const name = `${first} ${last}`.trim();
-    const base = DB.users.find((u) => u.role === r);
-    const session = {
-      userId: `u-new-${Date.now()}`,
+    if (!r) return { ok: false, error: "Choose a valid role to assign." };
+    if (!password || password.length < 6) return { ok: false, error: "Password must be at least 6 characters." };
+    const exists = DB.users.some((u) => u.email.toLowerCase() === String(email).trim().toLowerCase());
+    if (exists) return { ok: false, error: "An account with this email already exists. Please login." };
+
+    // TODO: POST /api/auth/signup — server assigns RBAC role
+    const template = DB.users.find((u) => u.role === r);
+    const session = toSession({
+      id: `u-new-${Date.now()}`,
       role: r,
-      name,
-      email: email.trim(),
-      staffId: base?.staffId || null,
-      patientId: r === "patient" ? base?.patientId || "p-1" : null,
-      ward: base?.ward || null,
-      dept: base?.dept || null,
-      demo: true,
-    };
+      name: `${first} ${last}`.trim(),
+      email: String(email).trim(),
+      title: ROLE_META[r].label,
+      staffId: template.staffId || null,
+      patientId: r === "patient" ? template.patientId || "p-1" : null,
+      ward: template.ward || null,
+      dept: template.dept || null,
+    });
+    session.demo = true;
     writeSession(session);
     return { ok: true, session };
   }
 
-  function requireAuth(allowedRoles) {
+  function requireAuth() {
     const session = readSession();
-    if (!session) {
+    if (!session || !normalizeRole(session.role)) {
+      clearSession();
       location.href = "login.html";
       return null;
     }
-    if (allowedRoles && !allowedRoles.includes(session.role)) {
-      location.href = dashboardPath(session.role);
-      return null;
-    }
+    session.meta = ROLE_META[session.role];
+    session.permissions = PERMISSIONS[session.role].slice();
     return session;
   }
 
   function can(session, permission) {
-    if (!session) return false;
-    return (PERMISSIONS[session.role] || []).includes(permission);
-  }
-
-  function dashboardPath() {
-    return "app.html";
+    return Boolean(session && (PERMISSIONS[session.role] || []).includes(permission));
   }
 
   function staffName(id) {
@@ -256,37 +293,38 @@
     return DB.patients.find((p) => p.id === id)?.name || id;
   }
 
-  /* —— RLS helpers: only rows the role may see —— */
+  function initials(name) {
+    return String(name || "?")
+      .replace(/^Dr\.\s*/i, "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0]?.toUpperCase() || "")
+      .join("");
+  }
+
   const rls = {
     appointments(session) {
       const rows = DB.appointments;
       if (can(session, "appointments:read_all")) return rows;
       if (session.role === "doctor") return rows.filter((a) => a.doctorId === session.staffId);
       if (session.role === "nurse") {
-        const wardPatients = new Set(DB.patients.filter((p) => p.ward === session.ward).map((p) => p.id));
-        return rows.filter((a) => wardPatients.has(a.patientId) || a.doctorId === "s-doc-1");
+        const wardIds = new Set(DB.patients.filter((p) => p.ward === session.ward).map((p) => p.id));
+        return rows.filter((a) => wardIds.has(a.patientId));
       }
       if (session.role === "patient") return rows.filter((a) => a.patientId === session.patientId);
       return [];
     },
     patients(session) {
       if (can(session, "patients:read_all")) return DB.patients;
-      if (can(session, "patients:read_assigned")) {
-        return DB.patients.filter((p) => p.doctorId === session.staffId);
-      }
-      if (can(session, "patients:read_ward")) {
-        return DB.patients.filter((p) => p.ward === session.ward);
-      }
-      if (session.role === "patient") {
-        return DB.patients.filter((p) => p.id === session.patientId);
-      }
+      if (can(session, "patients:read_assigned")) return DB.patients.filter((p) => p.doctorId === session.staffId);
+      if (can(session, "patients:read_ward")) return DB.patients.filter((p) => p.ward === session.ward);
+      if (session.role === "patient") return DB.patients.filter((p) => p.id === session.patientId);
       return [];
     },
     shifts(session) {
       if (can(session, "schedule:read") || can(session, "schedule:write")) return DB.shifts;
-      if (can(session, "schedule:read_own")) {
-        return DB.shifts.filter((s) => s.staffId === session.staffId);
-      }
+      if (can(session, "schedule:read_own")) return DB.shifts.filter((s) => s.staffId === session.staffId);
       return [];
     },
     staff(session) {
@@ -297,11 +335,15 @@
     exchanges(session) {
       if (can(session, "exchanges:approve")) return DB.exchanges;
       if (can(session, "exchanges:request")) {
-        return DB.exchanges.filter(
-          (e) => e.fromStaffId === session.staffId || e.toStaffId === session.staffId,
-        );
+        return DB.exchanges.filter((e) => e.fromStaffId === session.staffId || e.toStaffId === session.staffId);
       }
       return [];
+    },
+    notifications(session) {
+      return DB.notifications.filter((n) => n.role === session.role);
+    },
+    activity(session) {
+      return DB.activity.filter((a) => a.role === session.role);
     },
     doctorsPublic() {
       return DB.doctorsPublic;
@@ -312,39 +354,74 @@
     const appts = rls.appointments(session);
     const shifts = rls.shifts(session);
     const patients = rls.patients(session);
+    const notes = rls.notifications(session);
     if (session.role === "admin") {
       return [
-        { label: "Active staff", value: DB.staff.filter((s) => s.status === "active").length },
-        { label: "Published shifts", value: DB.shifts.filter((s) => s.status === "published").length },
-        { label: "Open appointments", value: DB.appointments.filter((a) => a.status !== "draft").length },
-        { label: "Pending swaps", value: DB.exchanges.filter((e) => e.status !== "approved").length },
+        { label: "Active staff", value: DB.staff.filter((s) => s.status === "active").length, hint: "Across all units" },
+        { label: "Published shifts", value: DB.shifts.filter((s) => s.status === "published").length, hint: "This roster cycle" },
+        { label: "Open visits", value: DB.appointments.filter((a) => a.status !== "draft").length, hint: "Hospital-wide" },
+        { label: "Pending approvals", value: DB.exchanges.filter((e) => e.status !== "approved").length, hint: "Needs admin action" },
       ];
     }
     if (session.role === "doctor") {
       return [
-        { label: "My patients", value: patients.length },
-        { label: "Today’s shifts", value: shifts.filter((s) => s.date === "2026-10-23").length },
-        { label: "Upcoming visits", value: appts.filter((a) => a.status === "confirmed").length },
-        { label: "Swap requests", value: rls.exchanges(session).length },
+        { label: "Assigned patients", value: patients.length, hint: "Under your care" },
+        { label: "Shifts this week", value: shifts.length, hint: "Your roster" },
+        { label: "Confirmed visits", value: appts.filter((a) => a.status === "confirmed").length, hint: "Clinic load" },
+        { label: "Unread alerts", value: notes.length, hint: "Action items" },
       ];
     }
     if (session.role === "nurse") {
       return [
-        { label: "Ward patients", value: patients.length },
-        { label: "My shifts", value: shifts.length },
-        { label: "Clinic list", value: appts.length },
-        { label: "Swap requests", value: rls.exchanges(session).length },
+        { label: "Ward patients", value: patients.length, hint: session.ward || "Your ward" },
+        { label: "My shifts", value: shifts.length, hint: "Published + draft" },
+        { label: "Clinic list", value: appts.length, hint: "Ward-linked visits" },
+        { label: "Handoffs", value: notes.length, hint: "Nursing alerts" },
       ];
     }
     return [
-      { label: "My visits", value: appts.length },
-      { label: "Confirmed", value: appts.filter((a) => a.status === "confirmed").length },
-      { label: "Requested", value: appts.filter((a) => a.status === "requested").length },
-      { label: "Doctors listed", value: DB.doctorsPublic.length },
+      { label: "My visits", value: appts.length, hint: "All statuses" },
+      { label: "Confirmed", value: appts.filter((a) => a.status === "confirmed").length, hint: "Ready to attend" },
+      { label: "Requested", value: appts.filter((a) => a.status === "requested").length, hint: "Awaiting hospital" },
+      { label: "Doctors listed", value: DB.doctorsPublic.length, hint: "Public directory" },
+    ];
+  }
+
+  function quickActions(session) {
+    if (session.role === "admin") {
+      return [
+        { label: "Publish schedule", view: "schedule" },
+        { label: "Review approvals", view: "exchanges" },
+        { label: "Manage staff roles", view: "staff" },
+        { label: "Open analytics", view: "reports" },
+      ];
+    }
+    if (session.role === "doctor") {
+      return [
+        { label: "Open clinic list", view: "appointments" },
+        { label: "Review patients", view: "patients" },
+        { label: "Request swap", view: "exchanges" },
+        { label: "Check alerts", view: "notifications" },
+      ];
+    }
+    if (session.role === "nurse") {
+      return [
+        { label: "Open ward board", view: "ward" },
+        { label: "Today’s shifts", view: "schedule" },
+        { label: "Clinic list", view: "appointments" },
+        { label: "Handoff notes", view: "notifications" },
+      ];
+    }
+    return [
+      { label: "Book a visit", view: "appointments" },
+      { label: "Find a doctor", view: "doctors" },
+      { label: "Care updates", view: "notifications" },
+      { label: "Edit profile", view: "profile" },
     ];
   }
 
   global.FilfiluAuth = {
+    ROLE_META,
     PERMISSIONS,
     NAV,
     DB,
@@ -356,14 +433,17 @@
     can,
     rls,
     statsFor,
+    quickActions,
     staffName,
     patientName,
-    dashboardPath,
+    initials,
+    normalizeRole,
+    dashboardPath: () => "app.html",
     demoAccounts: [
-      { email: "admin@filfilu.com", role: "admin" },
-      { email: "doctor@filfilu.com", role: "doctor" },
-      { email: "nurse@filfilu.com", role: "nurse" },
-      { email: "patient@filfilu.com", role: "patient" },
+      { email: "admin@filfilu.com", role: "admin", name: "Selam Bekele" },
+      { email: "doctor@filfilu.com", role: "doctor", name: "Dr. Helen Tesfaye" },
+      { email: "nurse@filfilu.com", role: "nurse", name: "Rahel Abebe" },
+      { email: "patient@filfilu.com", role: "patient", name: "Amina Mohammed" },
     ],
   };
 })(window);

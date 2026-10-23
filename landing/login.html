@@ -250,21 +250,22 @@
           <span class="brand-text"><strong>FILFILU</strong><span>HOSPITAL</span></span>
         </a>
         <h1>Welcome Back</h1>
-        <p class="sub">Sign in to your role workspace. Demo password for all accounts: <strong>filfilu</strong></p>
+        <p class="sub">Pick a demo account — your <strong>role is assigned automatically</strong>. Password: <strong>filfilu</strong></p>
 
         <div class="msg" id="msg" role="status"></div>
 
         <form id="loginForm" novalidate>
           <div class="field">
-            <label for="role">Workspace role</label>
+            <label for="role">Assigned role</label>
             <div class="input-wrap">
               <select id="role" name="role" required style="border:0;outline:none;width:100%;background:transparent;color:inherit;font:inherit">
-                <option value="admin">Admin</option>
+                <option value="admin">Administrator</option>
                 <option value="doctor">Doctor</option>
                 <option value="nurse">Nurse</option>
                 <option value="patient" selected>Patient</option>
               </select>
             </div>
+            <small id="roleHint" style="display:block;margin-top:.35rem;color:var(--muted);font-size:.75rem;font-weight:600">Role must match the account. Use a demo chip below for a perfect match.</small>
           </div>
 
           <div class="field">
@@ -335,14 +336,28 @@
       const showMsg = (text) => { msg.textContent = text; msg.classList.add("show"); };
 
       const demoBox = document.getElementById("demoAccounts");
+      const roleHint = document.getElementById("roleHint");
+      const syncHint = () => {
+        const meta = Auth.ROLE_META[form.role.value];
+        roleHint.textContent = meta
+          ? `You will enter the ${meta.label} workspace with that role’s permissions.`
+          : "Select a role.";
+      };
+      form.role.addEventListener("change", syncHint);
+      syncHint();
+
       Auth.demoAccounts.forEach((acc) => {
         const b = document.createElement("button");
         b.type = "button";
-        b.textContent = `${acc.role}: ${acc.email}`;
+        const meta = Auth.ROLE_META[acc.role];
+        b.textContent = `${meta.short} · ${acc.email}`;
+        b.title = acc.name;
         b.addEventListener("click", () => {
           form.role.value = acc.role;
           form.email.value = acc.email;
           form.password.value = "filfilu";
+          syncHint();
+          showMsg(`Selected ${meta.label}: ${acc.name}. Click Login.`);
         });
         demoBox.appendChild(b);
       });
@@ -373,8 +388,9 @@
           showMsg(result.error || "Login failed.");
           return;
         }
-        showMsg(`Signed in as ${result.session.role}. Opening your workspace…`);
-        setTimeout(() => { location.href = Auth.dashboardPath(); }, 500);
+        const label = result.session.meta?.label || result.session.role;
+        showMsg(`Role assigned: ${label}. Opening your professional workspace…`);
+        setTimeout(() => { location.href = Auth.dashboardPath(); }, 450);
       });
     })();
   </script>
