@@ -216,10 +216,88 @@
     .success svg path { animation-delay: .25s; }
     @keyframes draw { to { stroke-dashoffset: 0; } }
 
+    /* —— Content sections —— */
+    .section { position: relative; z-index: 1; padding: clamp(3.5rem, 7vw, 5.5rem) 0; scroll-margin-top: 5rem; }
+    .section-alt { background: color-mix(in srgb, var(--soft) 70%, var(--bg)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .section-head { max-width: 38rem; margin-bottom: 2.4rem; }
+    .section-kicker {
+      display: inline-flex; margin-bottom: .7rem; padding: .35rem .75rem; border-radius: 999px;
+      background: var(--soft); color: var(--blue); font-size: .75rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+    }
+    .section-head h2 {
+      margin: 0 0 .7rem; font-size: clamp(1.8rem, 3.5vw, 2.6rem); font-weight: 800;
+      letter-spacing: -.03em; line-height: 1.15;
+    }
+    .section-head p { margin: 0; color: var(--muted); font-size: 1.02rem; line-height: 1.65; }
+
+    .about-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: start; }
+    .about-story p { color: var(--muted); line-height: 1.7; margin: 0 0 1rem; }
+    .about-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .stat-tile {
+      padding: 1.25rem 1.2rem; border-radius: 20px; background: var(--bg); border: 1px solid var(--line);
+      box-shadow: 0 10px 28px rgba(11,36,71,.05);
+    }
+    .stat-tile strong { display: block; font-size: 1.7rem; font-weight: 800; letter-spacing: -.03em; }
+    .stat-tile span { color: var(--muted); font-size: .85rem; font-weight: 600; }
+    .about-values { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1.75rem; }
+    .value-item { padding: 1.1rem 1rem; border-radius: 18px; background: var(--soft); }
+    .value-item h3 { margin: 0 0 .35rem; font-size: 1rem; }
+    .value-item p { margin: 0; color: var(--muted); font-size: .88rem; line-height: 1.5; }
+
+    .cards-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1rem; }
+    .cards-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.1rem; }
+    .info-card {
+      padding: 1.35rem 1.25rem; border-radius: 22px; background: var(--bg); border: 1px solid var(--line);
+      transition: transform .25s var(--ease), border-color .25s, box-shadow .25s;
+    }
+    .info-card:hover {
+      transform: translateY(-4px); border-color: color-mix(in srgb, var(--blue) 35%, var(--line));
+      box-shadow: 0 16px 36px rgba(11,36,71,.08);
+    }
+    .info-ico {
+      width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; margin-bottom: .9rem;
+      background: var(--soft); color: var(--blue); font-weight: 800;
+    }
+    .info-card h3 { margin: 0 0 .4rem; font-size: 1.05rem; }
+    .info-card p { margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.55; }
+    .info-card .meta { display: block; margin-top: .75rem; font-size: .78rem; font-weight: 700; color: var(--teal); }
+
+    .dept-card .hours { margin-top: .85rem; font-size: .8rem; color: var(--muted); font-weight: 600; }
+    .dept-card .staff { margin-top: .35rem; font-size: .8rem; font-weight: 700; color: var(--navy); }
+
+    .contact-grid { display: grid; grid-template-columns: .95fr 1.05fr; gap: clamp(1.5rem, 4vw, 2.5rem); }
+    .contact-list { display: grid; gap: 1rem; }
+    .contact-item {
+      display: grid; grid-template-columns: 46px 1fr; gap: .9rem; align-items: start;
+      padding: 1.1rem 1.15rem; border-radius: 18px; border: 1px solid var(--line); background: var(--bg);
+    }
+    .contact-item .info-ico { margin: 0; }
+    .contact-item h3 { margin: 0 0 .2rem; font-size: .95rem; }
+    .contact-item p, .contact-item a { margin: 0; color: var(--muted); font-size: .9rem; font-weight: 600; text-decoration: none; }
+    .contact-item a:hover { color: var(--blue); }
+    .contact-form {
+      padding: 1.5rem; border-radius: 24px; background: var(--bg); border: 1px solid var(--line);
+      box-shadow: 0 16px 40px rgba(11,36,71,.06);
+    }
+    .contact-form .field { margin-bottom: .85rem; }
+    .contact-form textarea {
+      border: 1px solid var(--line); border-radius: 12px; padding: .75rem .9rem;
+      background: var(--bg); color: var(--navy); width: 100%; min-height: 110px; resize: vertical; font: inherit;
+    }
+    .site-footer {
+      position: relative; z-index: 1; padding: 1.5rem 0 2rem; border-top: 1px solid var(--line);
+      color: var(--muted); font-size: .85rem; font-weight: 600; text-align: center;
+    }
+
     @media (max-width: 980px) {
       .nav-pill { display: none; }
       .hero { grid-template-columns: 1fr; }
       .photo-panel { max-height: 520px; margin: 0 auto; }
+      .about-grid, .contact-grid { grid-template-columns: 1fr; }
+      .cards-3, .cards-4, .about-values { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 640px) {
+      .cards-3, .cards-4, .about-values, .about-stats { grid-template-columns: 1fr; }
     }
     @media (max-width: 520px) {
       .btn-login { display: none; }
@@ -241,12 +319,12 @@
   <div class="blob blob-b" aria-hidden="true"></div>
 
   <header class="site-header wrap">
-    <a class="brand" href="#" aria-label="Filfilu Hospital home">
+    <a class="brand" href="#home" aria-label="Filfilu Hospital home">
       <span class="brand-mark" aria-hidden="true">+</span>
       <span class="brand-text"><strong>FILFILU</strong><span>HOSPITAL</span></span>
     </a>
     <nav class="nav-pill" aria-label="Primary">
-      <a class="active" href="#">Home</a>
+      <a class="active" href="#home">Home</a>
       <a href="#about">About</a>
       <a href="#services">Services</a>
       <a href="#departments">Departments</a>
@@ -262,7 +340,7 @@
   </header>
 
   <main>
-    <section class="hero wrap" aria-label="Welcome">
+    <section class="hero wrap" id="home" aria-label="Welcome">
       <canvas id="particles" aria-hidden="true"></canvas>
       <div class="hero-copy">
         <span class="pill-label"><span class="pulse" aria-hidden="true"></span> Welcome to Filfilu Hospital</span>
@@ -317,7 +395,225 @@
         </div>
       </div>
     </section>
+
+    <!-- SAMPLE / MOCK DATA: replace About, Services, Departments, Contact from backend later -->
+    <section class="section" id="about" aria-labelledby="about-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-kicker">About</span>
+          <h2 id="about-title">Care rooted in community</h2>
+          <p>Filfilu Hospital Management System connects patients, clinicians, and hospital teams in one calm, modern workspace.</p>
+        </div>
+        <div class="about-grid">
+          <div class="about-story">
+            <p>Founded to serve families across the region, Filfilu blends compassionate bedside care with digital tools for scheduling, records, and duty coordination.</p>
+            <p>Our mission is simple: quality medical care, modern facilities, and clear communication — so every visit feels guided and personal.</p>
+            <div class="about-values">
+              <div class="value-item">
+                <h3>Compassion</h3>
+                <p>Every patient is treated with dignity, patience, and respect.</p>
+              </div>
+              <div class="value-item">
+                <h3>Excellence</h3>
+                <p>Evidence-based practice guided by senior specialists.</p>
+              </div>
+              <div class="value-item">
+                <h3>Access</h3>
+                <p>Appointments and updates available when you need them.</p>
+              </div>
+            </div>
+          </div>
+          <div class="about-stats" aria-label="Hospital highlights">
+            <div class="stat-tile"><strong>12+</strong><span>Years of service</span></div>
+            <div class="stat-tile"><strong>50+</strong><span>Specialist doctors</span></div>
+            <div class="stat-tile"><strong>18k</strong><span>Patients served yearly</span></div>
+            <div class="stat-tile"><strong>24/7</strong><span>Emergency coverage</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="services" aria-labelledby="services-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-kicker">Services</span>
+          <h2 id="services-title">What we offer</h2>
+          <p>Mock catalogue of clinical and support services — swap these for live offerings from your system.</p>
+        </div>
+        <div class="cards-3">
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
+            <h3>Outpatient clinics</h3>
+            <p>Book same-week visits with generalists and specialists across core care lines.</p>
+            <span class="meta">Avg wait · 2 days</span>
+          </article>
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-3h6l2 3h4v7H3z"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg></div>
+            <h3>Emergency & triage</h3>
+            <p>Round-the-clock emergency assessment with rapid referral into inpatient units.</p>
+            <span class="meta">Open · Always</span>
+          </article>
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 18l-5-9V3"/></svg></div>
+            <h3>Diagnostics lab</h3>
+            <p>Blood work, imaging prep, and digital results shared to your patient profile.</p>
+            <span class="meta">Results · 24–48 hrs</span>
+          </article>
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"/><path d="M6 21v-1a5 5 0 0 1 5-5h0a3 3 0 0 1 3 3v3"/></svg></div>
+            <h3>Maternity care</h3>
+            <p>Antenatal visits, delivery suites, and postnatal follow-up for new parents.</p>
+            <span class="meta">Dedicated wing</span>
+          </article>
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="12" rx="3"/><path d="M12 12v4M10 14h4M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div>
+            <h3>In-house pharmacy</h3>
+            <p>Prescription fill and counseling for discharge and chronic medication plans.</p>
+            <span class="meta">Mon–Sat · 8am–8pm</span>
+          </article>
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/></svg></div>
+            <h3>Telehealth follow-up</h3>
+            <p>Secure video check-ins for stable patients after clinic or surgery.</p>
+            <span class="meta">By appointment</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="departments" aria-labelledby="departments-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-kicker">Departments</span>
+          <h2 id="departments-title">Clinical departments</h2>
+          <p>Sample department directory with hours and lead clinicians — replace with live roster data.</p>
+        </div>
+        <div class="cards-4">
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><path d="M18 14v2a4 4 0 0 1-8 0"/><circle cx="18" cy="19" r="2"/></svg></div>
+            <h3>General Medicine</h3>
+            <p>Primary care, chronic disease management, and health check-ups.</p>
+            <p class="staff">Lead · Dr. Helen Tesfaye</p>
+            <p class="hours">Hours · Mon–Fri 8:00–17:00</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="9" r="4"/><path d="M6 20c1.5-3 4-4.5 6-4.5S16.5 17 18 20"/></svg></div>
+            <h3>Pediatrics</h3>
+            <p>Child wellness visits, immunizations, and acute pediatric care.</p>
+            <p class="staff">Lead · Dr. Dawit Bekele</p>
+            <p class="hours">Hours · Mon–Sat 8:00–16:00</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6C19 16.5 12 21 12 21z"/></svg></div>
+            <h3>Cardiology</h3>
+            <p>ECG, echocardiography, and heart-risk screening clinics.</p>
+            <p class="staff">Lead · Dr. Sara Mekonnen</p>
+            <p class="hours">Hours · Mon–Fri 9:00–16:00</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3c4 4 6 8 0 18M17 3c-4 4-6 8 0 18M7 8h10M7 16h10"/></svg></div>
+            <h3>Laboratory</h3>
+            <p>Pathology, chemistry panels, and infection screening.</p>
+            <p class="staff">Lead · Lab Dir. Yonas Hailu</p>
+            <p class="hours">Hours · Daily 7:00–20:00</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></div>
+            <h3>Maternity</h3>
+            <p>Obstetrics, prenatal ultrasound, and postnatal support.</p>
+            <p class="staff">Lead · Dr. Rahel Abebe</p>
+            <p class="hours">Hours · 24/7 labor suite</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7a2.5 2.5 0 1 1-2-4 2.5 2.5 0 0 1 2 4zm0 0 10 10m0 0a2.5 2.5 0 1 0 4-2 2.5 2.5 0 0 0-4 2zM17 7a2.5 2.5 0 1 0 2-4 2.5 2.5 0 0 0-2 4zm0 0L7 17m0 0a2.5 2.5 0 1 1-4 2 2.5 2.5 0 0 1 4-2z"/></svg></div>
+            <h3>Orthopedics</h3>
+            <p>Fracture clinics, joint care, and physiotherapy referral.</p>
+            <p class="staff">Lead · Dr. Mulugeta Assefa</p>
+            <p class="hours">Hours · Tue–Sat 8:30–15:30</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6a3 3 0 0 1 6 0 3 3 0 0 1 3 3c0 1.5-.7 2.3-1.5 3 .8.7 1.5 1.5 1.5 3a3 3 0 0 1-3 3v2H12m0-17a3 3 0 0 0-3 3c0 1 .3 1.6.8 2.2C8.5 9.8 7 10.8 7 13a3 3 0 0 0 3 3v2h2"/></svg></div>
+            <h3>Neurology</h3>
+            <p>Headache, seizure, and stroke follow-up consultations.</p>
+            <p class="staff">Lead · Dr. Kidist Alemu</p>
+            <p class="hours">Hours · Wed–Fri 9:00–15:00</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+            <h3>Ophthalmology</h3>
+            <p>Vision screening, cataract prep, and eye infection care.</p>
+            <p class="staff">Lead · Dr. Bemnet Girma</p>
+            <p class="hours">Hours · Mon–Thu 8:00–14:00</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="contact" aria-labelledby="contact-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-kicker">Contact</span>
+          <h2 id="contact-title">Talk to Filfilu</h2>
+          <p>Mock contact details and a message form — wire submit to your backend when ready.</p>
+        </div>
+        <div class="contact-grid">
+          <div class="contact-list">
+            <div class="contact-item">
+              <div class="info-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s7-6 7-11a7 7 0 1 0-14 0c0 5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
+              <div>
+                <h3>Main campus</h3>
+                <p>Filfilu Avenue, Bole Sub-city<br />Addis Ababa, Ethiopia</p>
+              </div>
+            </div>
+            <div class="contact-item">
+              <div class="info-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8 9.6a16 16 0 0 0 6.4 6.4l1.2-1.2a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6A2 2 0 0 1 22 16.9z"/></svg></div>
+              <div>
+                <h3>Phone</h3>
+                <p><a href="tel:+251911000000">+251 911 000 000</a> · Reception</p>
+                <p><a href="tel:+251911000911">+251 911 000 911</a> · Emergency</p>
+              </div>
+            </div>
+            <div class="contact-item">
+              <div class="info-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></div>
+              <div>
+                <h3>Email</h3>
+                <p><a href="mailto:care@filfilu.hospital">care@filfilu.hospital</a></p>
+                <p><a href="mailto:appointments@filfilu.hospital">appointments@filfilu.hospital</a></p>
+              </div>
+            </div>
+            <div class="contact-item">
+              <div class="info-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+              <div>
+                <h3>Front desk hours</h3>
+                <p>Mon–Fri 7:30–18:00 · Sat 8:00–13:00</p>
+                <p>Emergency department open 24/7</p>
+              </div>
+            </div>
+          </div>
+          <form class="contact-form" id="contactForm">
+            <label class="field">Full name<input name="name" required autocomplete="name" placeholder="Your name" /></label>
+            <label class="field">Email<input name="email" type="email" required autocomplete="email" placeholder="you@email.com" /></label>
+            <label class="field">Topic
+              <select name="topic" required>
+                <option value="">Select a topic</option>
+                <option>General inquiry</option>
+                <option>Appointments</option>
+                <option>Billing</option>
+                <option>Feedback</option>
+              </select>
+            </label>
+            <label class="field">Message<textarea name="message" required placeholder="How can we help?"></textarea></label>
+            <button class="btn btn-primary" type="submit" style="width:100%">Send message</button>
+            <p id="contactMsg" style="display:none;margin:.9rem 0 0;color:var(--teal);font-weight:700;font-size:.9rem" role="status"></p>
+          </form>
+        </div>
+      </div>
+    </section>
   </main>
+
+  <footer class="site-footer">
+    <div class="wrap">© Filfilu Hospital · Demonstration content · Not for clinical use</div>
+  </footer>
 
   <dialog id="bookDialog" aria-label="Book an appointment">
     <div class="modal-inner">
