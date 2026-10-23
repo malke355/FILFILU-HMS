@@ -2,8 +2,23 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { hashPassword, signToken, verifyPassword } from "../lib/auth.js";
+import {
+  buildGoogleAuthUrl,
+  exchangeCodeAndVerify,
+  frontendOrigin,
+  googleConfigured,
+  newOAuthState,
+  type GoogleProfile,
+} from "../lib/google.js";
 import { PERMISSIONS } from "../lib/rbac.js";
 import { ROLES, type Role } from "../lib/roles.js";
+import {
+  OAUTH_STATE_COOKIE,
+  clearOAuthStateCookie,
+  clearSessionCookie,
+  setOAuthStateCookie,
+  setSessionCookie,
+} from "../lib/sessionCookie.js";
 import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
 
 const router = Router();
@@ -30,6 +45,7 @@ function publicUser(u: {
   name: string;
   role: string;
   title: string | null;
+  picture?: string | null;
   staffId: string | null;
   patientId: string | null;
   ward: string | null;
@@ -42,12 +58,97 @@ function publicUser(u: {
     name: u.name,
     role,
     title: u.title,
+    picture: u.picture ?? null,
     staffId: u.staffId,
     patientId: u.patientId,
     ward: u.ward,
     dept: u.dept,
     permissions: PERMISSIONS[role] || [],
   };
+}
+
+function issueAuth(res: import("express").Response, user: {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  title: string | null;
+  picture?: string | null;
+  staffId: string | null;
+  patientId: string | null;
+  ward: string | null;
+  dept: string | null;
+}, status = 200) {
+  const token = signToken({
+    sub: user.id,
+    email: user.email,
+    role: user.role as Role,
+    name: user.name,
+    staffId: user.staffId,
+    patientId: user.patientId,
+    ward: user.ward,
+    dept: user.dept,
+    title: user.title,
+  });
+  setSessionCookie(res, token);
+  return res.status(status).json({ token, user: publicUser(user) });
+}
+
+async function findOrCreateGoogleUser(profile: GoogleProfile) {
+  const bySub = await prisma.user.findUnique({ where: { googleSub: profile.sub } });
+  if (bySub) {
+    return prisma.user.update({
+      where: { id: bySub.id },
+      data: {
+        email: profile.email,
+        name: profile.name,
+        picture: profile.picture,
+        emailVerified: true,
+      },
+    });
+  }
+
+  const byEmail = await prisma.user.findUnique({ where: { email: profile.email } });
+  if (byEmail) {
+    return prisma.user.update({
+      where: { id: byEmail.id },
+      data: {
+        googleSub: profile.sub,
+        name: profile.name || byEmail.name,
+        picture: profile.picture ?? byEmail.picture,
+        emailVerified: true,
+      },
+    });
+  }
+
+  const patient = await prisma.patient.create({
+    data: {
+      name: profile.name,
+      age: 30,
+      condition: "Google sign-in registration",
+      doctorId: "s-doc-1",
+    },
+  });
+
+  return prisma.user.create({
+    data: {
+      email: profile.email,
+      passwordHash: null,
+      name: profile.name,
+      role: "patient",
+      title: "Patient",
+      picture: profile.picture,
+      googleSub: profile.sub,
+      emailVerified: true,
+      patientId: patient.id,
+    },
+  });
+}
+
+function loginRedirectError(message: string) {
+  const url = new URL("login.html", frontendOrigin().endsWith("/") ? frontendOrigin() : `${frontendOrigin()}/`);
+  url.searchParams.set("error", message);
+  return url.toString();
 }
 
 router.post("/login", async (req, res, next) => {
@@ -65,23 +166,11 @@ router.post("/login", async (req, res, next) => {
       });
     }
 
-    const token = signToken({
-      sub: user.id,
-      email: user.email,
-      role: user.role as Role,
-      name: user.name,
-      staffId: user.staffId,
-      patientId: user.patientId,
-      ward: user.ward,
-      dept: user.dept,
-      title: user.title,
-    });
-
     await prisma.auditLog.create({
       data: { actorId: user.id, action: "auth.login", entity: "User", metaJson: JSON.stringify({ role: user.role }) },
     });
 
-    res.json({ token, user: publicUser(user) });
+    return issueAuth(res, user);
   } catch (err) {
     next(err);
   }
@@ -140,6 +229,57 @@ router.post("/signup", async (req, res, next) => {
       },
     });
 
+    await prisma.auditLog.create({
+      data: { actorId: user.id, action: "auth.signup", entity: "User", metaJson: JSON.stringify({ role: user.role }) },
+    });
+
+    return issueAuth(res, user, 201);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Start Google OAuth — redirects to Google's account chooser. */
+router.get("/google", (req, res) => {
+  try {
+    if (!googleConfigured()) {
+      return res.redirect(loginRedirectError("Google sign-in is not configured on the server."));
+    }
+    const state = newOAuthState();
+    setOAuthStateCookie(res, state);
+    return res.redirect(buildGoogleAuthUrl(state));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Could not start Google sign-in.";
+    return res.redirect(loginRedirectError(message));
+  }
+});
+
+/** Google OAuth callback — verifies ID token server-side, then sets session cookie. */
+router.get("/google/callback", async (req, res) => {
+  try {
+    if (!googleConfigured()) {
+      return res.redirect(loginRedirectError("Google sign-in is not configured on the server."));
+    }
+
+    const errParam = typeof req.query.error === "string" ? req.query.error : "";
+    if (errParam) {
+      const desc = typeof req.query.error_description === "string" ? req.query.error_description : errParam;
+      return res.redirect(loginRedirectError(desc || "Google sign-in was cancelled."));
+    }
+
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    const state = typeof req.query.state === "string" ? req.query.state : "";
+    const expected = (req as typeof req & { cookies?: Record<string, string> }).cookies?.[OAUTH_STATE_COOKIE];
+    clearOAuthStateCookie(res);
+
+    if (!code) return res.redirect(loginRedirectError("Google sign-in failed: missing authorization code."));
+    if (!state || !expected || state !== expected) {
+      return res.redirect(loginRedirectError("Google sign-in failed: invalid OAuth state."));
+    }
+
+    const profile = await exchangeCodeAndVerify(code);
+    const user = await findOrCreateGoogleUser(profile);
+
     const token = signToken({
       sub: user.id,
       email: user.email,
@@ -151,15 +291,36 @@ router.post("/signup", async (req, res, next) => {
       dept: user.dept,
       title: user.title,
     });
+    setSessionCookie(res, token);
 
     await prisma.auditLog.create({
-      data: { actorId: user.id, action: "auth.signup", entity: "User", metaJson: JSON.stringify({ role: user.role }) },
+      data: {
+        actorId: user.id,
+        action: "auth.google",
+        entity: "User",
+        metaJson: JSON.stringify({ sub: profile.sub, email: profile.email }),
+      },
     });
 
-    res.status(201).json({ token, user: publicUser(user) });
+    const dest = new URL("app.html", frontendOrigin().endsWith("/") ? frontendOrigin() : `${frontendOrigin()}/`);
+    return res.redirect(dest.toString());
   } catch (err) {
-    next(err);
+    const message = err instanceof Error ? err.message : "Google sign-in failed.";
+    return res.redirect(loginRedirectError(message));
   }
+});
+
+router.post("/logout", (_req, res) => {
+  clearSessionCookie(res);
+  clearOAuthStateCookie(res);
+  res.json({ ok: true });
+});
+
+router.get("/logout", (_req, res) => {
+  clearSessionCookie(res);
+  clearOAuthStateCookie(res);
+  const dest = new URL("login.html", frontendOrigin().endsWith("/") ? frontendOrigin() : `${frontendOrigin()}/`);
+  res.redirect(dest.toString());
 });
 
 router.get("/me", requireAuth, async (req: AuthedRequest, res, next) => {

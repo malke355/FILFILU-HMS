@@ -314,7 +314,17 @@
   <script>
     (() => {
       const Auth = window.FilfiluAuth;
-      if (Auth.session()) location.href = Auth.dashboardPath();
+      const params = new URLSearchParams(location.search);
+      const oauthError = params.get("error");
+
+      (async () => {
+        if (Auth.session()?.token || Auth.session()?.cookieAuth) {
+          location.href = Auth.dashboardPath();
+          return;
+        }
+        const restored = await Auth.restoreSessionFromCookie();
+        if (restored) location.href = Auth.dashboardPath();
+      })();
 
       const root = document.documentElement;
       document.getElementById("themeBtn").addEventListener("click", () => {
@@ -334,6 +344,12 @@
 
       const msg = document.getElementById("msg");
       const showMsg = (text) => { msg.textContent = text; msg.classList.add("show"); };
+      if (oauthError) {
+        showMsg(oauthError);
+        params.delete("error");
+        const clean = `${location.pathname}${params.toString() ? `?${params}` : ""}${location.hash}`;
+        history.replaceState({}, "", clean);
+      }
 
       const demoBox = document.getElementById("demoAccounts");
       const roleHint = document.getElementById("roleHint");
@@ -367,9 +383,10 @@
         showMsg("Password reset will connect to your backend soon. Use Sign Up if you are new.");
       });
 
-      document.querySelectorAll("[data-social]").forEach((btn) => {
+      document.querySelectorAll('[data-social="google"]').forEach((btn) => {
         btn.addEventListener("click", () => {
-          showMsg("Google sign-in will connect to your auth provider later.");
+          showMsg("Redirecting to Google…");
+          Auth.beginGoogleSignIn();
         });
       });
 

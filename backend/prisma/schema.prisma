@@ -10,18 +10,21 @@ datasource db {
 // SQLite: store role/status as strings (admin|doctor|nurse|patient, etc.)
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  role         String
-  title        String?
-  staffId      String?  @unique
-  patientId    String?  @unique
-  ward         String?
-  dept         String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String?
+  name          String
+  role          String
+  title         String?
+  picture       String?
+  googleSub     String?  @unique
+  emailVerified Boolean  @default(false)
+  staffId       String?  @unique
+  patientId     String?  @unique
+  ward          String?
+  dept          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   staff         Staff?         @relation(fields: [staffId], references: [id])
   patient       Patient?       @relation(fields: [patientId], references: [id])

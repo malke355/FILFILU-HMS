@@ -1,3 +1,4 @@
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
@@ -24,6 +25,7 @@ export function createApp() {
     }),
   );
   app.use(express.json({ limit: "1mb" }));
+  app.use(cookieParser());
   app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
   app.get("/", (_req, res) => {
@@ -32,7 +34,7 @@ export function createApp() {
       version: "1.0.0",
       docs: {
         health: "GET /api/health",
-        auth: "POST /api/auth/login | /api/auth/signup | GET /api/auth/me",
+        auth: "POST /api/auth/login | /api/auth/signup | GET /api/auth/google | GET /api/auth/google/callback | POST /api/auth/logout | GET /api/auth/me",
         resources: "GET /api/staff | /patients | /appointments | /shifts | /exchanges | /notifications | /dashboard/stats | /activity",
         mutations: "POST /api/appointments | /exchanges | /exchanges/approve-pending | /shifts/publish-drafts",
         public: "GET /api/doctors | /doctor-schedules | /departments | /specialties",

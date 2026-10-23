@@ -245,12 +245,19 @@
   }
 
   async function api(path, options = {}) {
-    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+    const headers = { ...(options.headers || {}) };
+    if (options.body != null && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
     const session = readSession();
-    if (session?.token && !headers.Authorization) {
+    if (session?.token && session.token !== "cookie" && !headers.Authorization) {
       headers.Authorization = `Bearer ${session.token}`;
     }
-    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
     let body = null;
     try {
       body = await res.json();
@@ -269,8 +276,34 @@
   let cachedStats = null;
   let cachedActivity = [];
 
+  async function restoreSessionFromCookie() {
+    try {
+      const body = await api("/auth/me");
+      if (!body?.user) return null;
+      const session = toSession(body.user, "cookie");
+      session.cookieAuth = true;
+      writeSession(session);
+      return session;
+    } catch {
+      return null;
+    }
+  }
+
+  function beginGoogleSignIn() {
+    location.href = `${API_BASE}/auth/google`;
+  }
+
+  async function logout() {
+    try {
+      await api("/auth/logout", { method: "POST", body: "{}" });
+    } catch {
+      /* ignore network errors — still clear local session */
+    }
+    clearSession();
+  }
+
   async function hydrateFromApi(session) {
-    if (!session?.token) return session;
+    if (!session?.token && !session?.cookieAuth) return session;
     const [staff, patients, appointments, shifts, exchanges, notifications, doctors, schedules, stats, activity] =
       await Promise.all([
         api("/staff").catch(() => null),
@@ -493,7 +526,8 @@
 
   function requireAuth() {
     const session = readSession();
-    if (!session || !normalizeRole(session.role) || !session.token) {
+    const hasAuth = session && normalizeRole(session.role) && (session.token || session.cookieAuth);
+    if (!hasAuth) {
       clearSession();
       location.href = "login.html";
       return null;
@@ -507,8 +541,21 @@
   }
 
   async function bootWorkspace() {
-    const session = requireAuth();
-    if (!session) return null;
+    let session = readSession();
+    if (!session?.token && !session?.cookieAuth) {
+      session = await restoreSessionFromCookie();
+    }
+    if (!session || !normalizeRole(session.role)) {
+      clearSession();
+      location.href = "login.html";
+      return null;
+    }
+    session.meta = ROLE_META[session.role];
+    session.permissions = (session.permissions && session.permissions.length
+      ? session.permissions
+      : PERMISSIONS[session.role]
+    ).slice();
+    writeSession(session);
     try {
       await hydrateFromApi(session);
       return readSession();
@@ -681,6 +728,8 @@
     api,
     login,
     signup,
+    beginGoogleSignIn,
+    restoreSessionFromCookie,
     postContact,
     postBooking,
     hydrateFromApi,
@@ -691,7 +740,7 @@
     publishDraftShifts,
     requestExchange,
     updateAppointmentStatus,
-    logout: clearSession,
+    logout,
     session: readSession,
     requireAuth,
     can,

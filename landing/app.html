@@ -279,8 +279,8 @@
       document.getElementById("userEmail").textContent = session.email;
       document.getElementById("userAvatar").textContent = Auth.initials(session.name);
 
-      document.getElementById("logoutBtn").addEventListener("click", () => {
-        Auth.logout();
+      document.getElementById("logoutBtn").addEventListener("click", async () => {
+        await Auth.logout();
         location.href = "login.html";
       });
 
