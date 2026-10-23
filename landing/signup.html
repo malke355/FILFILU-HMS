@@ -187,10 +187,10 @@
             <div class="input-wrap">
               <select id="role" name="role" required>
                 <option value="">Select role</option>
-                <option>Patient</option>
-                <option>Doctor</option>
-                <option>Nurse</option>
-                <option>Admin</option>
+                <option value="patient">Patient</option>
+                <option value="doctor">Doctor</option>
+                <option value="nurse">Nurse</option>
+                <option value="admin">Admin</option>
               </select>
             </div>
           </div>
@@ -220,8 +220,12 @@
     </aside>
   </main>
 
+  <script src="js/auth.js"></script>
   <script>
     (() => {
+      const Auth = window.FilfiluAuth;
+      if (Auth.session()) location.href = Auth.dashboardPath();
+
       const root = document.documentElement;
       document.getElementById("themeBtn").addEventListener("click", () => {
         const dark = root.getAttribute("data-theme") === "dark"
@@ -232,11 +236,20 @@
       document.getElementById("signupForm").addEventListener("submit", (e) => {
         e.preventDefault();
         const first = e.target.first.value.trim();
+        const last = e.target.last.value.trim();
+        const email = e.target.email.value.trim();
         const role = e.target.role.value;
-        // TODO: create account via backend API
-        msg.textContent = `Welcome, ${first}! Your ${role} account request is ready. Continue to Login.`;
+        const password = e.target.password.value;
+        // TODO: create account via backend API + assign RBAC role server-side
+        const result = Auth.signup({ first, last, email, role, password });
+        if (!result.ok) {
+          msg.textContent = result.error || "Sign up failed.";
+          msg.classList.add("show");
+          return;
+        }
+        msg.textContent = `Welcome, ${first}! Opening your ${role} workspace…`;
         msg.classList.add("show");
-        setTimeout(() => { window.location.href = "login.html"; }, 1100);
+        setTimeout(() => { location.href = Auth.dashboardPath(); }, 700);
       });
     })();
   </script>
