@@ -84,6 +84,8 @@ cd landing && python3 -m http.server 8080 --bind 0.0.0.0
 
 API: **http://127.0.0.1:4000** · Login requires a live API (JWT). See [`backend/README.md`](backend/README.md).
 
+**Google Sign-In:** the landing **Sign in with Google** button uses Express OAuth (`openid email profile`). Setup steps and redirect URIs are in [`backend/README.md`](backend/README.md#google-sign-in-oauth-20--openid-connect).
+
 Still out of scope for later: PostgreSQL RLS, EMR/billing modules, email/SMS delivery.
 
 ## License
