@@ -257,9 +257,9 @@
   <div class="toast" id="toast" role="status"></div>
 
   <script>
-    (() => {
+    (async () => {
       const Auth = window.FilfiluAuth;
-      const session = Auth.requireAuth();
+      const session = await Auth.bootWorkspace();
       if (!session) return;
 
       document.documentElement.style.setProperty("--accent", session.meta.accent);
@@ -375,6 +375,7 @@
               <span class="chip">Role · ${session.meta.label}</span>
               <span class="chip">${session.dept || session.ward || "Filfilu HMS"}</span>
               <span class="chip">${session.permissions.length} permissions</span>
+              <span class="chip">Live API</span>
             </div>
           </section>
           <div class="stats">${stats}</div>
@@ -407,6 +408,10 @@
           html = table(["Date", "Staff", "Unit", "Slot", "Department", "Status"],
             Auth.rls.shifts(session).filter((s) => matchQuery([s.date, s.dept, s.unit, Auth.staffName(s.staffId)])).map((s) =>
               `<tr><td>${s.date}</td><td>${Auth.staffName(s.staffId)}</td><td>${s.unit || "—"}</td><td>${s.slot}</td><td>${s.dept}</td><td>${badge(s.status)}</td></tr>`));
+          if (Auth.can(session, "schedule:publish")) {
+            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Publish roster</h3><span>API · schedule:publish</span></div>
+              <div class="actions"><button class="btn" type="button" id="publishDrafts">Publish all draft shifts</button></div></div>` + html;
+          }
         }
 
         if (current === "appointments") {
@@ -414,7 +419,7 @@
             Auth.rls.appointments(session).filter((a) => matchQuery([a.date, a.dept, a.reason, Auth.patientName(a.patientId), Auth.staffName(a.doctorId)])).map((a) =>
               `<tr><td>${a.date}</td><td>${a.time}</td><td>${Auth.patientName(a.patientId)}</td><td>${Auth.staffName(a.doctorId)}</td><td>${a.reason || a.dept}</td><td>${badge(a.status)}</td></tr>`));
           if (session.role === "patient") {
-            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Request a visit</h3><span>Demo action</span></div>
+            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Request a visit</h3><span>API · appointments:request</span></div>
               <div class="actions"><button class="btn" type="button" id="requestVisit">Request new appointment</button></div></div>` + html;
           }
         }
@@ -430,8 +435,14 @@
             Auth.rls.exchanges(session).filter((e) => matchQuery([e.date, e.reason || "", Auth.staffName(e.fromStaffId), Auth.staffName(e.toStaffId)])).map((e) =>
               `<tr><td>${e.date}</td><td>${Auth.staffName(e.fromStaffId)}</td><td>${Auth.staffName(e.toStaffId)}</td><td>${e.reason || "—"}</td><td>${badge(e.status)}</td></tr>`));
           if (Auth.can(session, "exchanges:approve")) {
-            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Admin approvals</h3><span>RBAC · exchanges:approve</span></div>
+            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Admin approvals</h3><span>API · exchanges:approve</span></div>
               <div class="actions"><button class="btn" type="button" id="approveAll">Approve pending swaps</button></div></div>` + html;
+          } else if (Auth.can(session, "exchanges:request") && session.staffId) {
+            const peers = Auth.DB.staff.filter((s) => s.id !== session.staffId && (s.role === "doctor" || s.role === "nurse"));
+            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Request a swap</h3><span>API · exchanges:request</span></div>
+              <div class="actions">
+                <button class="btn" type="button" id="requestSwap" data-peer="${peers[0]?.id || ""}">Request swap with ${peers[0]?.name || "peer"}</button>
+              </div></div>` + html;
           }
         }
 
@@ -440,7 +451,7 @@
           html = `<div class="stats">${s.map((x) => `<div class="stat"><strong>${x.value}</strong><span>${x.label}</span><small>${x.hint}</small></div>`).join("")}</div>
             <div class="cards">
               <article class="card"><h4>Coverage health</h4><p>Published shifts across departments for the current cycle.</p><div class="meta">${Auth.DB.shifts.filter((x) => x.status === "published").length} published</div></article>
-              <article class="card"><h4>Patient census</h4><p>Active patient records in the mock clinical registry.</p><div class="meta">${Auth.DB.patients.length} patients</div></article>
+              <article class="card"><h4>Patient census</h4><p>Active patient records from the Filfilu API.</p><div class="meta">${Auth.DB.patients.length} patients</div></article>
               <article class="card"><h4>Workflow queue</h4><p>Exchanges waiting on peer or admin review.</p><div class="meta">${Auth.DB.exchanges.length} open</div></article>
             </div>`;
         }
@@ -474,7 +485,7 @@
                   <td>${r.slots.map((t) => `<span class="badge" style="margin:0 .2rem .2rem 0">${t}</span>`).join("")}</td>
                   <td>${badge(r.status === "open" ? "open" : r.status === "limited" ? "limited" : "full")}</td>
                 </tr>`))}
-            <p style="margin:.85rem 0 0;color:var(--muted);font-size:.8rem;font-weight:600">Mock clinic timetable — replace with live published availability from your backend.</p>`;
+            <p style="margin:.85rem 0 0;color:var(--muted);font-size:.8rem;font-weight:600">Live clinic timetable from Filfilu API · /api/doctor-schedules</p>`;
         }
 
         if (current === "notifications") {
@@ -511,9 +522,70 @@
           render();
         }));
         const req = document.getElementById("requestVisit");
-        if (req) req.addEventListener("click", () => showToast("Visit request recorded (demo). Backend TODO."));
+        if (req) {
+          req.addEventListener("click", async () => {
+            req.disabled = true;
+            try {
+              const res = await Auth.requestVisitFromSchedule();
+              showToast(`Visit requested · ${res.data.date} ${res.data.time}`);
+              render();
+            } catch (err) {
+              showToast(err.message || "Could not request visit.");
+            } finally {
+              req.disabled = false;
+            }
+          });
+        }
         const appr = document.getElementById("approveAll");
-        if (appr) appr.addEventListener("click", () => showToast("Pending swaps marked approved (demo). Backend TODO."));
+        if (appr) {
+          appr.addEventListener("click", async () => {
+            appr.disabled = true;
+            try {
+              const res = await Auth.approvePendingExchanges();
+              showToast(`Approved ${res.data.approved} pending swap(s).`);
+              render();
+            } catch (err) {
+              showToast(err.message || "Could not approve swaps.");
+            } finally {
+              appr.disabled = false;
+            }
+          });
+        }
+        const pub = document.getElementById("publishDrafts");
+        if (pub) {
+          pub.addEventListener("click", async () => {
+            pub.disabled = true;
+            try {
+              const res = await Auth.publishDraftShifts();
+              showToast(`Published ${res.data.published} draft shift(s).`);
+              render();
+            } catch (err) {
+              showToast(err.message || "Could not publish shifts.");
+            } finally {
+              pub.disabled = false;
+            }
+          });
+        }
+        const swap = document.getElementById("requestSwap");
+        if (swap) {
+          swap.addEventListener("click", async () => {
+            const peer = swap.dataset.peer;
+            if (!peer) return showToast("No peer staff available.");
+            swap.disabled = true;
+            try {
+              const date = new Date();
+              date.setDate(date.getDate() + 3);
+              const iso = date.toISOString().slice(0, 10);
+              await Auth.requestExchange({ toStaffId: peer, date: iso, reason: "Coverage request" });
+              showToast(`Swap requested for ${iso}.`);
+              render();
+            } catch (err) {
+              showToast(err.message || "Could not request swap.");
+            } finally {
+              swap.disabled = false;
+            }
+          });
+        }
       }
 
       items.forEach((item) => {
@@ -531,7 +603,7 @@
       });
 
       render();
-      showToast(`${session.meta.label} role assigned · workspace ready`);
+      showToast(`${session.meta.label} · connected to API`);
     })();
   </script>
 </body>

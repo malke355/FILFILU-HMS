@@ -33,7 +33,8 @@ export function createApp() {
       docs: {
         health: "GET /api/health",
         auth: "POST /api/auth/login | /api/auth/signup | GET /api/auth/me",
-        resources: "GET /api/staff | /patients | /appointments | /shifts | /exchanges | /notifications | /dashboard/stats",
+        resources: "GET /api/staff | /patients | /appointments | /shifts | /exchanges | /notifications | /dashboard/stats | /activity",
+        mutations: "POST /api/appointments | /exchanges | /exchanges/approve-pending | /shifts/publish-drafts",
         public: "GET /api/doctors | /doctor-schedules | /departments | /specialties",
         forms: "POST /api/contact | /api/bookings",
       },
