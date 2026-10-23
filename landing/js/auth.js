@@ -95,7 +95,33 @@
     ],
   };
 
-  const DB = {
+  function t(key, vars) {
+    const I = global.FilfiluI18n;
+    if (!I || !I.t) return key;
+    return I.t(key, vars);
+  }
+
+  function roleMeta(role) {
+    const base = ROLE_META[role];
+    if (!base) return base;
+    if (!global.FilfiluI18n) return { ...base };
+    return {
+      ...base,
+      label: t("role." + role),
+      short: t("role." + role + ".short"),
+      greeting: t("role." + role + ".greeting"),
+      blurb: t("role." + role + ".blurb"),
+    };
+  }
+
+  function navFor(role) {
+    return (NAV[role] || []).map((item) => ({
+      ...item,
+      label: global.FilfiluI18n ? t("nav." + role + "." + item.id) : item.label,
+    }));
+  }
+
+    const DB = {
     users: [
       { id: "u-admin", role: "admin", name: "Selam Bekele", email: "admin@filfilu.com", password: "filfilu", title: "Hospital Administrator" },
       { id: "u-doc-1", role: "doctor", name: "Dr. Helen Tesfaye", email: "doctor@filfilu.com", password: "filfilu", staffId: "s-doc-1", dept: "General Medicine", title: "Consultant Physician" },
@@ -231,12 +257,12 @@
       role,
       name: user.name,
       email: user.email,
-      title: user.title || ROLE_META[role].label,
+      title: user.title || roleMeta(role).label,
       staffId: user.staffId || null,
       patientId: user.patientId || null,
       ward: user.ward || null,
       dept: user.dept || null,
-      meta: ROLE_META[role],
+      meta: roleMeta(role),
       permissions: (user.permissions && user.permissions.length ? user.permissions : PERMISSIONS[role]).slice(),
       token: token || null,
       source: token ? "api" : "local",
@@ -389,7 +415,7 @@
       if (wanted && wanted !== found.role) {
         return {
           ok: false,
-          error: `This account is assigned the ${ROLE_META[found.role].label} role. Choose “${ROLE_META[found.role].short}” or use another demo account.`,
+          error: `This account is assigned the ${roleMeta(found.role).label} role. Choose “${roleMeta(found.role).short}” or use another demo account.`,
         };
       }
       const session = toSession(found, null);
@@ -448,7 +474,7 @@
       role: r,
       name: `${first} ${last}`.trim(),
       email: String(email).trim(),
-      title: ROLE_META[r].label,
+      title: roleMeta(r).label,
       staffId: template.staffId || null,
       patientId: r === "patient" ? template.patientId || "p-1" : null,
       ward: template.ward || null,
@@ -498,7 +524,7 @@
       location.href = "login.html";
       return null;
     }
-    session.meta = ROLE_META[session.role];
+    session.meta = roleMeta(session.role);
     session.permissions = (session.permissions && session.permissions.length
       ? session.permissions
       : PERMISSIONS[session.role]
@@ -674,6 +700,8 @@
 
   global.FilfiluAuth = {
     ROLE_META,
+    roleMeta,
+    navFor,
     PERMISSIONS,
     NAV,
     DB,

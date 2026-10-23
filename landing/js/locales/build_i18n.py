@@ -1,0 +1,347 @@
+#!/usr/bin/env python3
+"""Generate landing/js/i18n.js with en / am / om dictionaries."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+OUT = Path(__file__).resolve().parents[1] / "i18n.js"
+
+en = {
+    "brand.hospital": "HOSPITAL",
+    "brand.workspace": "WORKSPACE",
+    "lang.label": "Language",
+    "common.theme": "Toggle dark mode",
+    "common.backHome": "← Back to home",
+    "common.or": "OR",
+    "common.login": "Login",
+    "common.signup": "Sign Up",
+    "common.home": "Home",
+    "common.about": "About",
+    "common.services": "Services",
+    "common.departments": "Departments",
+    "common.contact": "Contact",
+    "common.book": "Book Appointment",
+    "common.send": "Send message",
+    "common.loading": "Loading…",
+    "login.visualTitleBefore": "Welcome back to ",
+    "login.visualTitleEm": "better care",
+    "login.visualTitleAfter": ".",
+    "login.visualBody": "Sign in to manage appointments, records, and your Filfilu care journey — securely in one place.",
+    "login.statCare": "Care access",
+    "login.statSpecialists": "Specialists",
+    "login.statTrust": "Patient trust",
+    "login.title": "Welcome Back",
+    "login.subHtml": "Pick a demo account — your <strong>role is assigned automatically</strong>. Password: <strong>filfilu</strong>",
+    "login.role": "Assigned role",
+    "login.roleHint": "Role must match the account. Use a demo chip below for a perfect match.",
+    "login.email": "E-mail",
+    "login.password": "Password",
+    "login.passwordPh": "Enter your password",
+    "login.remember": "Remember me",
+    "login.forgot": "Forgot your password?",
+    "login.submit": "→ Login",
+    "login.google": "Sign in with Google",
+    "login.footerBefore": "Don’t have an account? ",
+    "login.signingIn": "Signing in…",
+    "login.needBoth": "Please enter both email and password.",
+    "login.roleAssigned": "Role assigned: {label} ({via}). Opening your professional workspace…",
+    "login.viaApi": "API",
+    "login.forgotMsg": "Password reset will connect to your backend soon. Use Sign Up if you are new.",
+    "login.googleMsg": "Google sign-in will connect to your auth provider later.",
+    "login.selected": "Selected {label}: {name}. Click Login.",
+    "login.roleOpt.admin": "Administrator",
+    "login.roleOpt.doctor": "Doctor",
+    "login.roleOpt.nurse": "Nurse",
+    "login.roleOpt.patient": "Patient",
+    "login.hintWorkspace": "You will enter the {label} workspace with that role’s permissions.",
+    "signup.visualTitleBefore": "Start your journey to ",
+    "signup.visualTitleEm": "one place",
+    "signup.visualTitleAfter": " care.",
+    "signup.visualBody": "Patients, doctors, and hospital services — connected in the Filfilu Hospital Management System.",
+    "signup.title": "Create Account",
+    "signup.sub": "Join Filfilu for appointments, records, and trusted care.",
+    "signup.first": "First name",
+    "signup.last": "Last name",
+    "signup.email": "E-mail",
+    "signup.role": "I am a",
+    "signup.roleSelect": "Select role",
+    "signup.password": "Password",
+    "signup.passwordPh": "Create a password",
+    "signup.terms": "I agree to Filfilu’s care terms and privacy notice.",
+    "signup.submit": "Create account",
+    "signup.footerBefore": "Already have an account? ",
+    "signup.creating": "Creating your account…",
+    "signup.welcome": "Welcome, {first}! {label} role assigned. Opening your workspace…",
+    "home.welcomePill": "Welcome to Filfilu Hospital",
+    "home.headline": "Your Health, Our Priority.",
+    "home.desc": "Quality medical care, modern facilities, and compassionate service — all in one place.",
+    "home.trustCare": "Trusted Care",
+    "home.trustDoctors": "Expert Doctors",
+    "home.trustTomorrow": "Better Tomorrow",
+    "home.aboutKicker": "About",
+    "home.aboutTitle": "Care rooted in community",
+    "home.aboutBody": "Filfilu Hospital brings modern clinical practice and neighborhood trust together.",
+    "home.servicesKicker": "Services",
+    "home.servicesTitle": "What we offer",
+    "home.servicesBody": "From first visits to specialty follow-ups, Filfilu keeps care coordinated.",
+    "home.deptKicker": "Departments",
+    "home.deptTitle": "Clinical departments",
+    "home.deptBody": "Browse the units that power everyday care at Filfilu.",
+    "home.contactKicker": "Contact",
+    "home.contactTitle": "Talk to Filfilu",
+    "home.contactBody": "Send a message — we route inquiries to the right hospital desk.",
+    "home.contactName": "Full name",
+    "home.contactEmail": "Email",
+    "home.contactTopic": "Topic",
+    "home.contactMessage": "Message",
+    "home.contactNamePh": "Your name",
+    "home.contactEmailPh": "you@email.com",
+    "home.contactMsgPh": "How can we help?",
+    "home.topicSelect": "Select a topic",
+    "home.topicGeneral": "General inquiry",
+    "home.topicAppt": "Appointments",
+    "home.topicBilling": "Billing",
+    "home.topicFeedback": "Feedback",
+    "home.bookTitle": "Book Appointment",
+    "home.bookName": "Full name",
+    "home.bookDept": "Department",
+    "home.bookDate": "Preferred date",
+    "home.bookSubmit": "Request visit",
+    "home.bookClose": "Close booking dialog",
+    "home.footer": "© Filfilu Hospital · Demonstration content · Not for clinical use",
+    "home.nextAvailable": "Next available",
+    "home.doctorsOnline": "Doctors online",
+    "home.liveHr": "Live heart rate",
+    "app.roleEyebrow": "Assigned role",
+    "app.signOut": "Sign out",
+    "app.filter": "Filter records…",
+    "app.liveApi": "Live API",
+    "app.connected": "{label} · connected to API",
+    "app.welcomeBack": "Welcome back, {name}.",
+    "app.quickActions": "Quick actions",
+    "app.roleShortcuts": "Role-aware shortcuts",
+    "app.alerts": "Alerts",
+    "app.activity": "Activity",
+    "app.latest": "Latest",
+    "app.noAlerts": "No alerts",
+    "app.noActivity": "No activity",
+    "app.records": "Records",
+    "app.visible": "{n} visible · role {role}",
+    "app.noRows": "No rows match your RLS policy",
+    "app.orFilter": " or filter",
+    "app.requestVisit": "Request a visit",
+    "app.requestVisitBtn": "Request new appointment",
+    "app.adminApprovals": "Admin approvals",
+    "app.approvePending": "Approve pending swaps",
+    "app.requestSwap": "Request a swap",
+    "app.requestSwapBtn": "Request swap with {name}",
+    "app.publishRoster": "Publish roster",
+    "app.publishDrafts": "Publish all draft shifts",
+    "app.inbox": "{role} inbox",
+    "app.alertsCount": "{n} alerts",
+    "app.inboxClear": "Inbox clear",
+    "app.noProfile": "No profile linked.",
+    "app.noPermission": "You do not have RBAC permission for this view.",
+    "app.specFilter": "Filter by specialty",
+    "app.specMeta": "{n} specialties · all doctors visible to patients",
+    "app.liveSchedule": "Live clinic timetable from Filfilu API",
+    "app.viewSchedule": "View schedule",
+    "app.coverage": "Coverage health",
+    "app.coverageBody": "Published shifts across departments for the current cycle.",
+    "app.census": "Patient census",
+    "app.censusBody": "Active patient records from the Filfilu API.",
+    "app.queue": "Workflow queue",
+    "app.queueBody": "Exchanges waiting on peer or admin review.",
+    "app.published": "{n} published",
+    "app.patientsN": "{n} patients",
+    "app.openN": "{n} open",
+    "app.onDuty": "On duty · ",
+    "app.outpatient": "Outpatient",
+    "app.priorityInbox": "Priority inbox for {role}",
+    "app.recentActivity": "Recent activity",
+    "app.visibleOnly": "Visible only to {role}",
+    "app.ageSex": "Age / sex",
+    "app.blood": "Blood type",
+    "app.primaryDoc": "Primary doctor",
+    "app.condition": "Condition",
+    "app.phone": "Phone",
+    "app.assignedRole": "Assigned role",
+    "app.patientId": "Patient ID {id}",
+    "app.all": "All",
+    "nav.admin.overview": "Command center",
+    "nav.admin.staff": "Staff & roles",
+    "nav.admin.schedule": "Duty schedule",
+    "nav.admin.appointments": "Appointments",
+    "nav.admin.exchanges": "Approvals",
+    "nav.admin.reports": "Analytics",
+    "nav.doctor.overview": "Today",
+    "nav.doctor.schedule": "My roster",
+    "nav.doctor.patients": "My patients",
+    "nav.doctor.appointments": "Clinic visits",
+    "nav.doctor.exchanges": "Shift swaps",
+    "nav.doctor.notifications": "Alerts",
+    "nav.nurse.overview": "Ward overview",
+    "nav.nurse.ward": "Patient board",
+    "nav.nurse.schedule": "My shifts",
+    "nav.nurse.appointments": "Clinic list",
+    "nav.nurse.exchanges": "Shift swaps",
+    "nav.nurse.notifications": "Handoffs",
+    "nav.patient.overview": "Home",
+    "nav.patient.appointments": "My visits",
+    "nav.patient.doctors": "Find a doctor",
+    "nav.patient.availability": "Doctor schedules",
+    "nav.patient.notifications": "Updates",
+    "nav.patient.profile": "My profile",
+    "view.overview": "Overview",
+    "view.overviewSub": "Personalized for your assigned role",
+    "view.staff": "Staff & roles",
+    "view.staffSub": "Admin RBAC directory",
+    "view.schedule": "Duty schedule",
+    "view.scheduleSub": "Roster rows visible under your policy",
+    "view.appointments": "Appointments",
+    "view.appointmentsSub": "RLS-filtered visit list",
+    "view.exchanges": "Approvals & swaps",
+    "view.exchangesSub": "Exchange workflow for your role",
+    "view.reports": "Analytics",
+    "view.reportsSub": "Hospital-wide aggregates",
+    "view.patients": "My patients",
+    "view.patientsSub": "Assigned patient panel",
+    "view.ward": "Ward board",
+    "view.wardSub": "Patients on your ward only",
+    "view.doctors": "Find a doctor",
+    "view.doctorsSub": "Published public directory",
+    "view.availability": "Doctor schedules",
+    "view.availabilitySub": "Availability across every specialty",
+    "view.notifications": "Alerts",
+    "view.notificationsSub": "Role inbox",
+    "view.profile": "My profile",
+    "view.profileSub": "Your patient record",
+    "role.admin": "Administrator",
+    "role.doctor": "Doctor",
+    "role.nurse": "Nurse",
+    "role.patient": "Patient",
+    "role.admin.short": "Admin",
+    "role.doctor.short": "Doctor",
+    "role.nurse.short": "Nurse",
+    "role.patient.short": "Patient",
+    "role.admin.greeting": "Hospital operations command center",
+    "role.doctor.greeting": "Clinical workspace",
+    "role.nurse.greeting": "Ward care workspace",
+    "role.patient.greeting": "Personal care portal",
+    "role.admin.blurb": "Manage staff, publish duty schedules, approve exchanges, and monitor hospital-wide activity.",
+    "role.doctor.blurb": "Review your roster, assigned patients, today’s visits, and shift-swap requests.",
+    "role.nurse.blurb": "Track ward patients, clinic lists, nursing shifts, and handoff notes.",
+    "role.patient.blurb": "View upcoming visits, request appointments, and find doctors on duty.",
+    "toast.visitRequested": "Visit requested · {date} {time}",
+    "toast.approved": "Approved {n} pending swap(s).",
+    "toast.published": "Published {n} draft shift(s).",
+    "toast.swapRequested": "Swap requested for {date}.",
+    "toast.noPeer": "No peer staff available.",
+    "toast.failVisit": "Could not request visit.",
+    "toast.failApprove": "Could not approve swaps.",
+    "toast.failPublish": "Could not publish shifts.",
+    "toast.failSwap": "Could not request swap.",
+}
+
+# Load Amharic + Oromo overrides from sidecar JSON (UTF-8)
+base = Path(__file__).resolve().parent
+# Prefer en from this file; overlay am/om from locale JSON sidecars
+am = dict(en)
+am.update(json.loads((base / "am.json").read_text(encoding="utf-8")))
+om = dict(en)
+om.update(json.loads((base / "om.json").read_text(encoding="utf-8")))
+
+dict_js = json.dumps({"en": en, "am": am, "om": om}, ensure_ascii=False, indent=2)
+
+js = f'''/**
+ * Filfilu product i18n: English, Amharic (አማርኛ), Oromo (Afaan Oromoo).
+ * Persists in localStorage and applies across all landing pages.
+ */
+(function (global) {{
+  const STORAGE_KEY = "filfilu.lang";
+  const LOCALES = [
+    {{ code: "en", native: "English" }},
+    {{ code: "am", native: "አማርኛ" }},
+    {{ code: "om", native: "Afaan Oromoo" }},
+  ];
+  const dict = {dict_js};
+
+  function normalize(code) {{
+    const c = String(code || "").toLowerCase();
+    if (c === "am" || c === "amh" || c === "amharic") return "am";
+    if (c === "om" || c === "oro" || c === "oromo" || c === "oromic") return "om";
+    return "en";
+  }}
+  function getLang() {{
+    try {{ return normalize(localStorage.getItem(STORAGE_KEY) || "en"); }}
+    catch {{ return "en"; }}
+  }}
+  function setLang(code) {{
+    const lang = normalize(code);
+    try {{ localStorage.setItem(STORAGE_KEY, lang); }} catch {{ /* ignore */ }}
+    document.documentElement.lang = lang;
+    apply(document);
+    global.dispatchEvent(new CustomEvent("filfilu:langchange", {{ detail: {{ lang }} }}));
+    return lang;
+  }}
+  function t(key, vars) {{
+    const lang = getLang();
+    let str = (dict[lang] && dict[lang][key]) || dict.en[key] || key;
+    if (vars) Object.keys(vars).forEach((k) => {{ str = str.split("{{" + k + "}}").join(String(vars[k])); }});
+    return str;
+  }}
+  function apply(root) {{
+    const scope = root || document;
+    scope.querySelectorAll("[data-i18n]").forEach((el) => {{
+      const key = el.getAttribute("data-i18n");
+      if (!key) return;
+      const val = t(key);
+      if (el.hasAttribute("data-i18n-html")) el.innerHTML = val;
+      else el.textContent = val;
+    }});
+    scope.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {{
+      el.setAttribute("placeholder", t(el.getAttribute("data-i18n-placeholder")));
+    }});
+    scope.querySelectorAll("[data-i18n-aria]").forEach((el) => {{
+      el.setAttribute("aria-label", t(el.getAttribute("data-i18n-aria")));
+    }});
+    scope.querySelectorAll("option[data-i18n-option]").forEach((el) => {{
+      el.textContent = t(el.getAttribute("data-i18n-option"));
+    }});
+    scope.querySelectorAll("[data-lang-select]").forEach((s) => {{ s.value = getLang(); }});
+  }}
+  function mountSwitcher(container, opts) {{
+    if (!container) return null;
+    const compact = opts && opts.compact;
+    const wrap = document.createElement("label");
+    wrap.className = "lang-switch" + (compact ? " compact" : "");
+    wrap.innerHTML =
+      '<span class="lang-switch-label" data-i18n="lang.label">' + t("lang.label") + "</span>" +
+      '<select data-lang-select aria-label="' + t("lang.label") + '">' +
+      LOCALES.map((l) => '<option value="' + l.code + '">' + l.native + "</option>").join("") +
+      "</select>";
+    const select = wrap.querySelector("select");
+    select.value = getLang();
+    select.addEventListener("change", () => setLang(select.value));
+    container.appendChild(wrap);
+    return wrap;
+  }}
+  function injectStyles() {{
+    if (document.getElementById("filfilu-i18n-styles")) return;
+    const style = document.createElement("style");
+    style.id = "filfilu-i18n-styles";
+    style.textContent = ".lang-switch{{display:inline-flex;align-items:center;gap:.45rem;font-size:.78rem;font-weight:700;color:var(--muted,#4F6280)}}.lang-switch select{{appearance:none;border:1px solid var(--line,#E3EBF5);background:var(--glass,#fff);color:var(--navy,#0B2447);border-radius:999px;padding:.4rem .85rem;font:inherit;font-weight:700;cursor:pointer;min-width:7.2rem}}.lang-switch.compact .lang-switch-label{{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}}.panel-top .lang-switch,.header-actions .lang-switch,.top-actions .lang-switch{{margin-right:.25rem}}";
+    document.head.appendChild(style);
+  }}
+  document.documentElement.lang = getLang();
+  global.FilfiluI18n = {{ LOCALES, t, getLang, setLang, apply, mountSwitcher, injectStyles, ready() {{ injectStyles(); apply(document); }} }};
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => {{ injectStyles(); apply(document); }});
+  else {{ injectStyles(); apply(document); }}
+}})(window);
+'''
+
+OUT.write_text(js, encoding="utf-8")
+print(f"Wrote {OUT} ({OUT.stat().st_size} bytes) keys={len(en)}")
+print("am login.title =", am["login.title"])
+print("om login.title =", om["login.title"])

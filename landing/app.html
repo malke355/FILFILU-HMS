@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="js/i18n.js"></script>
   <script src="js/auth.js"></script>
   <style>
     :root {
@@ -218,10 +219,10 @@
     <aside class="sidebar">
       <a class="brand" href="index.html" aria-label="Filfilu home">
         <span class="brand-mark" aria-hidden="true">+</span>
-        <span><strong>FILFILU</strong><small>WORKSPACE</small></span>
+        <span><strong>FILFILU</strong><small data-i18n="brand.workspace">WORKSPACE</small></span>
       </a>
       <div class="role-card">
-        <div class="eyebrow" id="roleEyebrow">Role</div>
+        <div class="eyebrow" id="roleEyebrow" data-i18n="app.roleEyebrow">Assigned role</div>
         <strong id="roleLabel">—</strong>
         <p id="roleBlurb">—</p>
       </div>
@@ -234,7 +235,7 @@
             <span id="userEmail">—</span>
           </div>
         </div>
-        <button class="ghost" type="button" id="logoutBtn">Sign out</button>
+        <button class="ghost" type="button" id="logoutBtn" data-i18n="app.signOut">Sign out</button>
       </div>
     </aside>
 
@@ -245,8 +246,9 @@
           <p id="viewSub">Role-scoped workspace</p>
         </div>
         <div class="top-actions">
-          <input class="search" id="search" type="search" placeholder="Filter records…" aria-label="Filter records" />
-          <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle dark mode">
+          <span id="langMount"></span>
+          <input class="search" id="search" type="search" data-i18n-placeholder="app.filter" placeholder="Filter records…" data-i18n-aria="app.filter" aria-label="Filter records" />
+          <button class="icon-btn" id="themeBtn" type="button" data-i18n-aria="common.theme" aria-label="Toggle dark mode">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg>
           </button>
         </div>
@@ -259,11 +261,14 @@
   <script>
     (async () => {
       const Auth = window.FilfiluAuth;
+      const I18n = window.FilfiluI18n;
+      const t = (k, v) => (I18n ? I18n.t(k, v) : k);
       const session = await Auth.bootWorkspace();
       if (!session) return;
 
+      I18n.mountSwitcher(document.getElementById("langMount"), { compact: true });
+
       document.documentElement.style.setProperty("--accent", session.meta.accent);
-      document.title = `${session.meta.short} · Filfilu Workspace`;
 
       const root = document.documentElement;
       document.getElementById("themeBtn").addEventListener("click", () => {
@@ -272,9 +277,14 @@
         root.setAttribute("data-theme", dark ? "light" : "dark");
       });
 
-      document.getElementById("roleEyebrow").textContent = "Assigned role";
-      document.getElementById("roleLabel").textContent = session.meta.label;
-      document.getElementById("roleBlurb").textContent = session.title + (session.dept ? ` · ${session.dept}` : session.ward ? ` · ${session.ward}` : "");
+      const paintRoleChrome = () => {
+        session.meta = Auth.roleMeta(session.role);
+        document.title = `${session.meta.short} · Filfilu Workspace`;
+        document.getElementById("roleEyebrow").textContent = t("app.roleEyebrow");
+        document.getElementById("roleLabel").textContent = session.meta.label;
+        document.getElementById("roleBlurb").textContent = session.title + (session.dept ? ` · ${session.dept}` : session.ward ? ` · ${session.ward}` : "");
+      };
+      paintRoleChrome();
       document.getElementById("userName").textContent = session.name;
       document.getElementById("userEmail").textContent = session.email;
       document.getElementById("userAvatar").textContent = Auth.initials(session.name);
@@ -298,26 +308,13 @@
         user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/></svg>',
       };
 
-      const titles = {
-        overview: ["Overview", "Personalized for your assigned role"],
-        staff: ["Staff & roles", "Admin RBAC directory"],
-        schedule: ["Duty schedule", "Roster rows visible under your policy"],
-        appointments: ["Appointments", "RLS-filtered visit list"],
-        exchanges: ["Approvals & swaps", "Exchange workflow for your role"],
-        reports: ["Analytics", "Hospital-wide aggregates"],
-        patients: ["My patients", "Assigned patient panel"],
-        ward: ["Ward board", "Patients on your ward only"],
-        doctors: ["Find a doctor", "Published public directory"],
-        availability: ["Doctor schedules", "Availability across every specialty"],
-        notifications: ["Alerts", "Role inbox"],
-        profile: ["My profile", "Your patient record"],
-      };
+      const titlePair = (id) => [t(`view.${id}`), t(`view.${id}Sub`)];
 
       const navEl = document.getElementById("nav");
       const viewRoot = document.getElementById("viewRoot");
       const searchEl = document.getElementById("search");
       const toast = document.getElementById("toast");
-      const items = Auth.NAV[session.role];
+      let items = Auth.navFor(session.role);
       let current = items[0].id;
       let query = "";
 
@@ -342,8 +339,8 @@
       }
 
       function table(headers, rowHtml) {
-        if (!rowHtml.length) return `<div class="panel"><div class="empty">No rows match your RLS policy${query ? " or filter" : ""}.</div></div>`;
-        return `<div class="panel"><div class="panel-h"><h3>Records</h3><span>${rowHtml.length} visible · role ${session.role}</span></div>
+        if (!rowHtml.length) return `<div class="panel"><div class="empty">${t("app.noRows")}${query ? t("app.orFilter") : ""}.</div></div>`;
+        return `<div class="panel"><div class="panel-h"><h3>${t("app.records")}</h3><span>${t("app.visible", { n: rowHtml.length, role: session.role })}</span></div>
           <table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
           <tbody>${rowHtml.join("")}</tbody></table></div>`;
       }
@@ -361,15 +358,15 @@
           `<button class="btn soft" type="button" data-go="${a.view}">${a.label}</button>`).join("");
         const notes = Auth.rls.notifications(session).slice(0, 5).map((n) =>
           `<div class="list-item"><span class="dot ${n.level === "warn" ? "warn" : n.level === "ok" ? "ok" : ""}"></span>
-            <div><strong>${n.text}</strong><p>Priority inbox for ${session.meta.short}</p></div>
+            <div><strong>${n.text}</strong><p>${t("app.priorityInbox", { role: session.meta.short })}</p></div>
             <time>${n.time}</time></div>`).join("");
         const activity = Auth.rls.activity(session).slice(0, 5).map((a) =>
-          `<div class="list-item"><span class="dot"></span><div><strong>${a.text}</strong><p>Recent activity</p></div><time>${a.time}</time></div>`).join("");
+          `<div class="list-item"><span class="dot"></span><div><strong>${a.text}</strong><p>${t("app.recentActivity")}</p></div><time>${a.time}</time></div>`).join("");
 
         return `
           <section class="hero">
             <div class="kicker">${session.meta.greeting}</div>
-            <h2>Welcome back, ${session.name.split(" ")[0]}.</h2>
+            <h2>${t("app.welcomeBack", { name: session.name.split(" ")[0] })}</h2>
             <p>${session.meta.blurb}</p>
             <div class="hero-meta">
               <span class="chip">Role · ${session.meta.label}</span>
@@ -380,17 +377,17 @@
           </section>
           <div class="stats">${stats}</div>
           <div class="panel" style="margin-bottom:1rem">
-            <div class="panel-h"><h3>Quick actions</h3><span>Role-aware shortcuts</span></div>
+            <div class="panel-h"><h3>${t("app.quickActions")}</h3><span>${t("app.roleShortcuts")}</span></div>
             <div class="actions">${actions}</div>
           </div>
           <div class="grid-2">
-            <div class="panel"><div class="panel-h"><h3>Alerts</h3><span>${Auth.rls.notifications(session).length} items</span></div><div class="list">${notes || '<div class="empty">No alerts</div>'}</div></div>
-            <div class="panel"><div class="panel-h"><h3>Activity</h3><span>Latest</span></div><div class="list">${activity || '<div class="empty">No activity</div>'}</div></div>
+            <div class="panel"><div class="panel-h"><h3>${t("app.alerts")}</h3><span>${t("app.alertsCount", { n: Auth.rls.notifications(session).length })}</span></div><div class="list">${notes || `<div class="empty">${t("app.noAlerts")}</div>`}</div></div>
+            <div class="panel"><div class="panel-h"><h3>${t("app.activity")}</h3><span>${t("app.latest")}</span></div><div class="list">${activity || `<div class="empty">${t("app.noActivity")}</div>`}</div></div>
           </div>`;
       }
 
       function render() {
-        const [title, sub] = titles[current] || ["Workspace", ""];
+        const [title, sub] = titlePair(current);
         document.getElementById("viewTitle").textContent = title;
         document.getElementById("viewSub").textContent = sub;
         [...navEl.children].forEach((b) => b.classList.toggle("active", b.dataset.id === current));
@@ -588,22 +585,34 @@
         }
       }
 
-      items.forEach((item) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.dataset.id = item.id;
-        btn.innerHTML = `${ICONS[item.icon] || ICONS.grid}<span>${item.label}</span>`;
-        btn.addEventListener("click", () => { current = item.id; render(); });
-        navEl.appendChild(btn);
-      });
+      const paintNav = () => {
+        items = Auth.navFor(session.role);
+        navEl.innerHTML = "";
+        items.forEach((item) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.dataset.id = item.id;
+          btn.innerHTML = `${ICONS[item.icon] || ICONS.grid}<span>${item.label}</span>`;
+          btn.addEventListener("click", () => { current = item.id; render(); });
+          navEl.appendChild(btn);
+        });
+      };
+      paintNav();
 
       searchEl.addEventListener("input", () => {
         query = searchEl.value.trim().toLowerCase();
         render();
       });
 
+      window.addEventListener("filfilu:langchange", () => {
+        paintRoleChrome();
+        paintNav();
+        I18n.apply(document);
+        render();
+      });
+
       render();
-      showToast(`${session.meta.label} · connected to API`);
+      showToast(t("app.connected", { label: session.meta.label }));
     })();
   </script>
 </body>
