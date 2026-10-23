@@ -1,9 +1,10 @@
 /**
- * Filfilu demo auth + RBAC + RLS (client-side mock).
- * TODO: replace with real JWT/httpOnly cookies and Postgres RLS policies.
+ * Filfilu auth + RBAC + RLS.
+ * Prefers the Phase-2 API (JWT); falls back to in-browser demo data if the API is offline.
  */
 (function (global) {
   const SESSION_KEY = "filfilu.session";
+  const API_BASE = (global.FILFILU_API_BASE || "http://127.0.0.1:4000/api").replace(/\/$/, "");
 
   /** @typedef {"admin"|"doctor"|"nurse"|"patient"} Role */
 
@@ -222,10 +223,11 @@
     sessionStorage.removeItem(SESSION_KEY);
   }
 
-  function toSession(user) {
+  function toSession(user, token) {
     const role = normalizeRole(user.role);
+    const userId = user.userId || user.id;
     return {
-      userId: user.id,
+      userId,
       role,
       name: user.name,
       email: user.email,
@@ -235,13 +237,77 @@
       ward: user.ward || null,
       dept: user.dept || null,
       meta: ROLE_META[role],
-      permissions: PERMISSIONS[role].slice(),
+      permissions: (user.permissions && user.permissions.length ? user.permissions : PERMISSIONS[role]).slice(),
+      token: token || null,
+      source: token ? "api" : "local",
       loggedInAt: new Date().toISOString(),
     };
   }
 
-  /** Perfect role assignment: account role always wins when email matches a demo user. */
-  function login({ email, password, role }) {
+  async function api(path, options = {}) {
+    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+    const session = readSession();
+    if (session?.token && !headers.Authorization) {
+      headers.Authorization = `Bearer ${session.token}`;
+    }
+    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    let body = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+    if (!res.ok) {
+      const err = new Error((body && body.error) || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
+    return body;
+  }
+
+  async function hydrateFromApi(session) {
+    if (!session?.token) return session;
+    try {
+      const [staff, patients, appointments, shifts, exchanges, notifications, doctors, schedules] =
+        await Promise.all([
+          api("/staff").catch(() => null),
+          api("/patients").catch(() => null),
+          api("/appointments").catch(() => null),
+          api("/shifts").catch(() => null),
+          api("/exchanges").catch(() => null),
+          api("/notifications").catch(() => null),
+          api("/doctors").catch(() => null),
+          api("/doctor-schedules").catch(() => null),
+        ]);
+      if (staff?.data) DB.staff = staff.data;
+      if (patients?.data) {
+        DB.patients = patients.data.map((p) => ({
+          ...p,
+          doctorId: p.doctorId || p.doctor?.id || null,
+        }));
+      }
+      if (appointments?.data) DB.appointments = appointments.data;
+      if (shifts?.data) DB.shifts = shifts.data;
+      if (exchanges?.data) DB.exchanges = exchanges.data;
+      if (notifications?.data) {
+        DB.notifications = notifications.data.map((n) => ({
+          id: n.id,
+          role: n.role || session.role,
+          text: n.text,
+          level: n.level,
+          time: n.createdAt ? new Date(n.createdAt).toLocaleString() : "just now",
+        }));
+      }
+      if (doctors?.data) DB.doctorsPublic = doctors.data;
+      if (schedules?.data) DB.doctorSchedules = schedules.data;
+    } catch {
+      /* keep local seed if hydrate fails */
+    }
+    return session;
+  }
+
+  function loginLocal({ email, password, role }) {
     const wanted = normalizeRole(role);
     const found = DB.users.find(
       (u) => u.email.toLowerCase() === String(email || "").trim().toLowerCase(),
@@ -257,12 +323,11 @@
           error: `This account is assigned the ${ROLE_META[found.role].label} role. Choose “${ROLE_META[found.role].short}” or use another demo account.`,
         };
       }
-      const session = toSession(found);
+      const session = toSession(found, null);
       writeSession(session);
-      return { ok: true, session };
+      return { ok: true, session, offline: true };
     }
 
-    // Unknown email: require an explicit role and create a scoped demo session
     if (!wanted) return { ok: false, error: "Select a workspace role before signing in." };
     if (!password) return { ok: false, error: "Enter your password." };
     const template = DB.users.find((u) => u.role === wanted);
@@ -272,20 +337,38 @@
       name: template.name,
       email: String(email).trim(),
       role: wanted,
-    });
+    }, null);
     session.demo = true;
     writeSession(session);
-    return { ok: true, session, demo: true };
+    return { ok: true, session, demo: true, offline: true };
   }
 
-  function signup({ first, last, email, role, password }) {
+  /** Perfect role assignment: account role always wins when email matches. */
+  async function login({ email, password, role }) {
+    try {
+      const body = await api("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password, role: role || undefined }),
+      });
+      const session = toSession(body.user, body.token);
+      writeSession(session);
+      await hydrateFromApi(session);
+      return { ok: true, session };
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) {
+        return { ok: false, error: err.message || "Login failed." };
+      }
+      return loginLocal({ email, password, role });
+    }
+  }
+
+  function signupLocal({ first, last, email, role, password }) {
     const r = normalizeRole(role);
     if (!r) return { ok: false, error: "Choose a valid role to assign." };
     if (!password || password.length < 6) return { ok: false, error: "Password must be at least 6 characters." };
     const exists = DB.users.some((u) => u.email.toLowerCase() === String(email).trim().toLowerCase());
     if (exists) return { ok: false, error: "An account with this email already exists. Please login." };
 
-    // TODO: POST /api/auth/signup — server assigns RBAC role
     const template = DB.users.find((u) => u.role === r);
     const session = toSession({
       id: `u-new-${Date.now()}`,
@@ -297,10 +380,39 @@
       patientId: r === "patient" ? template.patientId || "p-1" : null,
       ward: template.ward || null,
       dept: template.dept || null,
-    });
+    }, null);
     session.demo = true;
     writeSession(session);
-    return { ok: true, session };
+    return { ok: true, session, offline: true };
+  }
+
+  async function signup({ first, last, email, role, password }) {
+    const r = normalizeRole(role);
+    if (!r) return { ok: false, error: "Choose a valid role to assign." };
+    if (!password || password.length < 6) return { ok: false, error: "Password must be at least 6 characters." };
+    try {
+      const body = await api("/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({ first, last, email, password, role: r }),
+      });
+      const session = toSession(body.user, body.token);
+      writeSession(session);
+      await hydrateFromApi(session);
+      return { ok: true, session };
+    } catch (err) {
+      if (err.status === 409 || err.status === 400) {
+        return { ok: false, error: err.message || "Sign up failed." };
+      }
+      return signupLocal({ first, last, email, role: r, password });
+    }
+  }
+
+  async function postContact(payload) {
+    return api("/contact", { method: "POST", body: JSON.stringify(payload) });
+  }
+
+  async function postBooking(payload) {
+    return api("/bookings", { method: "POST", body: JSON.stringify(payload) });
   }
 
   function requireAuth() {
@@ -311,7 +423,13 @@
       return null;
     }
     session.meta = ROLE_META[session.role];
-    session.permissions = PERMISSIONS[session.role].slice();
+    session.permissions = (session.permissions && session.permissions.length
+      ? session.permissions
+      : PERMISSIONS[session.role]
+    ).slice();
+    if (session.token) {
+      hydrateFromApi(session).catch(() => {});
+    }
     return session;
   }
 
@@ -471,8 +589,13 @@
     PERMISSIONS,
     NAV,
     DB,
+    API_BASE,
+    api,
     login,
     signup,
+    postContact,
+    postBooking,
+    hydrateFromApi,
     logout: clearSession,
     session: readSession,
     requireAuth,

@@ -233,15 +233,16 @@
         root.setAttribute("data-theme", dark ? "light" : "dark");
       });
       const msg = document.getElementById("msg");
-      document.getElementById("signupForm").addEventListener("submit", (e) => {
+      document.getElementById("signupForm").addEventListener("submit", async (e) => {
         e.preventDefault();
         const first = e.target.first.value.trim();
         const last = e.target.last.value.trim();
         const email = e.target.email.value.trim();
         const role = e.target.role.value;
         const password = e.target.password.value;
-        // TODO: create account via backend API + assign RBAC role server-side
-        const result = Auth.signup({ first, last, email, role, password });
+        msg.textContent = "Creating your account…";
+        msg.classList.add("show");
+        const result = await Auth.signup({ first, last, email, role, password });
         if (!result.ok) {
           msg.textContent = result.error || "Sign up failed.";
           msg.classList.add("show");

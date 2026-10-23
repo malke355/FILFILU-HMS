@@ -373,7 +373,7 @@
         });
       });
 
-      form.addEventListener("submit", (e) => {
+      form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const email = form.email.value.trim();
         const password = form.password.value;
@@ -382,14 +382,15 @@
           showMsg("Please enter both email and password.");
           return;
         }
-        // TODO: authenticate with backend JWT / httpOnly cookie
-        const result = Auth.login({ email, password, role });
+        showMsg("Signing in…");
+        const result = await Auth.login({ email, password, role });
         if (!result.ok) {
           showMsg(result.error || "Login failed.");
           return;
         }
         const label = result.session.meta?.label || result.session.role;
-        showMsg(`Role assigned: ${label}. Opening your professional workspace…`);
+        const via = result.session.token ? "API" : "offline demo";
+        showMsg(`Role assigned: ${label} (${via}). Opening your professional workspace…`);
         setTimeout(() => { location.href = Auth.dashboardPath(); }, 450);
       });
     })();
