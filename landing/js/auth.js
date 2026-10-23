@@ -55,7 +55,7 @@
     ],
     patient: [
       "dashboard:patient", "appointments:read_own", "appointments:request", "doctors:read_public",
-      "profile:read_own", "profile:write_own", "notifications:read_own",
+      "schedule:read_public", "profile:read_own", "profile:write_own", "notifications:read_own",
     ],
   };
 
@@ -88,6 +88,7 @@
       { id: "overview", label: "Home", icon: "grid" },
       { id: "appointments", label: "My visits", icon: "clipboard" },
       { id: "doctors", label: "Find a doctor", icon: "stethoscope" },
+      { id: "availability", label: "Doctor schedules", icon: "calendar" },
       { id: "notifications", label: "Updates", icon: "bell" },
       { id: "profile", label: "My profile", icon: "user" },
     ],
@@ -106,6 +107,11 @@
       { id: "s-doc-1", name: "Dr. Helen Tesfaye", role: "doctor", dept: "General Medicine", status: "active", phone: "+251 911 100 001" },
       { id: "s-doc-2", name: "Dr. Sara Mekonnen", role: "doctor", dept: "Cardiology", status: "active", phone: "+251 911 100 002" },
       { id: "s-doc-3", name: "Dr. Dawit Bekele", role: "doctor", dept: "Pediatrics", status: "active", phone: "+251 911 100 003" },
+      { id: "s-doc-4", name: "Dr. Rahel Desta", role: "doctor", dept: "Maternity", status: "active", phone: "+251 911 100 004" },
+      { id: "s-doc-5", name: "Dr. Bemnet Girma", role: "doctor", dept: "Orthopedics", status: "active", phone: "+251 911 100 005" },
+      { id: "s-doc-6", name: "Dr. Kidist Alemu", role: "doctor", dept: "Neurology", status: "active", phone: "+251 911 100 006" },
+      { id: "s-doc-7", name: "Dr. Yared Negash", role: "doctor", dept: "Dermatology", status: "active", phone: "+251 911 100 007" },
+      { id: "s-doc-8", name: "Dr. Meron Tadesse", role: "doctor", dept: "Ophthalmology", status: "active", phone: "+251 911 100 008" },
       { id: "s-nurse-1", name: "Rahel Abebe", role: "nurse", dept: "Maternity", ward: "Ward A", status: "active", phone: "+251 911 100 011" },
       { id: "s-nurse-2", name: "Lidya Tadesse", role: "nurse", dept: "General Medicine", ward: "Ward B", status: "active", phone: "+251 911 100 012" },
       { id: "s-admin", name: "Selam Bekele", role: "admin", dept: "Administration", status: "active", phone: "+251 911 100 099" },
@@ -143,6 +149,34 @@
       { id: "s-doc-1", name: "Dr. Helen Tesfaye", specialty: "General Medicine", onDuty: true, nextSlot: "Today, 3:30 PM", rating: 4.9 },
       { id: "s-doc-2", name: "Dr. Sara Mekonnen", specialty: "Cardiology", onDuty: true, nextSlot: "Tomorrow, 11:00 AM", rating: 4.8 },
       { id: "s-doc-3", name: "Dr. Dawit Bekele", specialty: "Pediatrics", onDuty: false, nextSlot: "Fri, 10:00 AM", rating: 4.7 },
+      { id: "s-doc-4", name: "Dr. Rahel Desta", specialty: "Maternity", onDuty: true, nextSlot: "Today, 2:00 PM", rating: 4.8 },
+      { id: "s-doc-5", name: "Dr. Bemnet Girma", specialty: "Orthopedics", onDuty: true, nextSlot: "Thu, 9:00 AM", rating: 4.6 },
+      { id: "s-doc-6", name: "Dr. Kidist Alemu", specialty: "Neurology", onDuty: false, nextSlot: "Wed, 1:30 PM", rating: 4.7 },
+      { id: "s-doc-7", name: "Dr. Yared Negash", specialty: "Dermatology", onDuty: true, nextSlot: "Today, 4:15 PM", rating: 4.5 },
+      { id: "s-doc-8", name: "Dr. Meron Tadesse", specialty: "Ophthalmology", onDuty: false, nextSlot: "Sat, 10:30 AM", rating: 4.6 },
+    ],
+    /* SAMPLE: public doctor clinic availability by specialty (patients can read all) */
+    doctorSchedules: [
+      { id: "ds-1", doctorId: "s-doc-1", specialty: "General Medicine", day: "Monday", date: "2026-10-27", slots: ["09:00", "09:30", "10:00", "11:30", "14:00", "15:30"], room: "OPD 2", status: "open" },
+      { id: "ds-2", doctorId: "s-doc-1", specialty: "General Medicine", day: "Tuesday", date: "2026-10-28", slots: ["08:30", "09:00", "10:30", "13:00", "16:00"], room: "OPD 2", status: "open" },
+      { id: "ds-3", doctorId: "s-doc-1", specialty: "General Medicine", day: "Thursday", date: "2026-10-30", slots: ["09:00", "10:00", "11:00", "14:30"], room: "OPD 2", status: "limited" },
+      { id: "ds-4", doctorId: "s-doc-2", specialty: "Cardiology", day: "Monday", date: "2026-10-27", slots: ["11:00", "11:30", "12:00", "15:00", "15:30"], room: "Cardio Bay", status: "open" },
+      { id: "ds-5", doctorId: "s-doc-2", specialty: "Cardiology", day: "Wednesday", date: "2026-10-29", slots: ["09:30", "10:00", "13:15", "14:00"], room: "Cardio Bay", status: "open" },
+      { id: "ds-6", doctorId: "s-doc-2", specialty: "Cardiology", day: "Friday", date: "2026-10-31", slots: ["10:00", "10:30", "11:00"], room: "Cardio Bay", status: "limited" },
+      { id: "ds-7", doctorId: "s-doc-3", specialty: "Pediatrics", day: "Tuesday", date: "2026-10-28", slots: ["08:00", "08:30", "09:00", "09:30", "10:00"], room: "Peds Clinic", status: "open" },
+      { id: "ds-8", doctorId: "s-doc-3", specialty: "Pediatrics", day: "Friday", date: "2026-10-31", slots: ["09:00", "09:45", "10:30", "11:15"], room: "Peds Clinic", status: "open" },
+      { id: "ds-9", doctorId: "s-doc-4", specialty: "Maternity", day: "Monday", date: "2026-10-27", slots: ["08:00", "09:00", "10:00", "14:00", "15:00"], room: "Maternity Wing", status: "open" },
+      { id: "ds-10", doctorId: "s-doc-4", specialty: "Maternity", day: "Wednesday", date: "2026-10-29", slots: ["08:30", "09:30", "11:00", "13:30"], room: "Maternity Wing", status: "open" },
+      { id: "ds-11", doctorId: "s-doc-4", specialty: "Maternity", day: "Saturday", date: "2026-11-01", slots: ["09:00", "10:00", "11:00"], room: "Maternity Wing", status: "limited" },
+      { id: "ds-12", doctorId: "s-doc-5", specialty: "Orthopedics", day: "Tuesday", date: "2026-10-28", slots: ["09:00", "09:40", "10:20", "14:00"], room: "Ortho 1", status: "open" },
+      { id: "ds-13", doctorId: "s-doc-5", specialty: "Orthopedics", day: "Thursday", date: "2026-10-30", slots: ["08:30", "09:10", "09:50", "15:00", "15:40"], room: "Ortho 1", status: "open" },
+      { id: "ds-14", doctorId: "s-doc-6", specialty: "Neurology", day: "Wednesday", date: "2026-10-29", slots: ["13:00", "13:30", "14:00", "14:30"], room: "Neuro Suite", status: "open" },
+      { id: "ds-15", doctorId: "s-doc-6", specialty: "Neurology", day: "Friday", date: "2026-10-31", slots: ["10:00", "11:00", "12:00"], room: "Neuro Suite", status: "limited" },
+      { id: "ds-16", doctorId: "s-doc-7", specialty: "Dermatology", day: "Monday", date: "2026-10-27", slots: ["14:00", "14:20", "14:40", "15:00", "16:00"], room: "Derm Clinic", status: "open" },
+      { id: "ds-17", doctorId: "s-doc-7", specialty: "Dermatology", day: "Thursday", date: "2026-10-30", slots: ["09:00", "09:30", "10:00", "10:30"], room: "Derm Clinic", status: "open" },
+      { id: "ds-18", doctorId: "s-doc-8", specialty: "Ophthalmology", day: "Tuesday", date: "2026-10-28", slots: ["10:00", "10:30", "11:00"], room: "Eye Unit", status: "limited" },
+      { id: "ds-19", doctorId: "s-doc-8", specialty: "Ophthalmology", day: "Saturday", date: "2026-11-01", slots: ["09:00", "09:30", "10:00", "10:30", "11:00"], room: "Eye Unit", status: "open" },
+      { id: "ds-20", doctorId: "s-doc-2", specialty: "Cardiology", day: "Saturday", date: "2026-11-01", slots: ["09:00", "09:30"], room: "Cardio Bay", status: "full" },
     ],
     notifications: [
       { id: "n-1", role: "admin", text: "2 shift swaps await your approval", time: "12m ago", level: "warn" },
@@ -348,6 +382,15 @@
     doctorsPublic() {
       return DB.doctorsPublic;
     },
+    doctorSchedules(session) {
+      if (can(session, "schedule:read_public") || can(session, "appointments:read_all")) {
+        return DB.doctorSchedules.slice();
+      }
+      return [];
+    },
+    specialties() {
+      return [...new Set(DB.doctorSchedules.map((s) => s.specialty))].sort();
+    },
   };
 
   function statsFor(session) {
@@ -379,11 +422,14 @@
         { label: "Handoffs", value: notes.length, hint: "Nursing alerts" },
       ];
     }
+    const openSlots = DB.doctorSchedules
+      .filter((s) => s.status !== "full")
+      .reduce((n, s) => n + s.slots.length, 0);
     return [
       { label: "My visits", value: appts.length, hint: "All statuses" },
       { label: "Confirmed", value: appts.filter((a) => a.status === "confirmed").length, hint: "Ready to attend" },
-      { label: "Requested", value: appts.filter((a) => a.status === "requested").length, hint: "Awaiting hospital" },
-      { label: "Doctors listed", value: DB.doctorsPublic.length, hint: "Public directory" },
+      { label: "Specialties", value: rls.specialties().length, hint: "With open clinics" },
+      { label: "Open slots", value: openSlots, hint: "Bookable this week" },
     ];
   }
 
@@ -413,10 +459,10 @@
       ];
     }
     return [
-      { label: "Book a visit", view: "appointments" },
+      { label: "Doctor schedules", view: "availability" },
       { label: "Find a doctor", view: "doctors" },
+      { label: "Book a visit", view: "appointments" },
       { label: "Care updates", view: "notifications" },
-      { label: "Edit profile", view: "profile" },
     ];
   }
 

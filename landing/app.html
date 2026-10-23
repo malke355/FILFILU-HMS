@@ -308,6 +308,7 @@
         patients: ["My patients", "Assigned patient panel"],
         ward: ["Ward board", "Patients on your ward only"],
         doctors: ["Find a doctor", "Published public directory"],
+        availability: ["Doctor schedules", "Availability across every specialty"],
         notifications: ["Alerts", "Role inbox"],
         profile: ["My profile", "Your patient record"],
       };
@@ -446,7 +447,34 @@
 
         if (current === "doctors" && Auth.can(session, "doctors:read_public")) {
           html = `<div class="cards">${Auth.rls.doctorsPublic().filter((d) => matchQuery([d.name, d.specialty])).map((d) =>
-            `<article class="card"><h4>${d.name}</h4><p>${d.specialty}</p><div class="meta">${d.onDuty ? "On duty · " : ""}${d.nextSlot} · ★ ${d.rating}</div></article>`).join("")}</div>`;
+            `<article class="card"><h4>${d.name}</h4><p>${d.specialty}</p><div class="meta">${d.onDuty ? "On duty · " : ""}${d.nextSlot} · ★ ${d.rating}</div>
+              <div class="actions" style="padding:.8rem 0 0"><button class="btn soft" type="button" data-go="availability" data-specialty="${d.specialty}">View schedule</button></div></article>`).join("")}</div>`;
+        }
+
+        if (current === "availability" && Auth.can(session, "schedule:read_public")) {
+          const specialties = Auth.rls.specialties();
+          const activeSpec = viewRoot.dataset.specFilter || "All";
+          let rows = Auth.rls.doctorSchedules(session);
+          if (activeSpec !== "All") rows = rows.filter((r) => r.specialty === activeSpec);
+          rows = rows.filter((r) => matchQuery([r.specialty, r.day, r.room, Auth.staffName(r.doctorId), r.slots.join(" ")]));
+          const chips = ["All", ...specialties].map((s) =>
+            `<button class="btn ${s === activeSpec ? "" : "soft"}" type="button" data-spec="${s}">${s}</button>`).join("");
+          html = `
+            <div class="panel" style="margin-bottom:1rem">
+              <div class="panel-h"><h3>Filter by specialty</h3><span>${specialties.length} specialties · all doctors visible to patients</span></div>
+              <div class="actions" id="specFilters">${chips}</div>
+            </div>
+            ${table(["Specialty", "Doctor", "Day / date", "Room", "Open slots", "Status"],
+              rows.map((r) =>
+                `<tr>
+                  <td><strong>${r.specialty}</strong></td>
+                  <td>${Auth.staffName(r.doctorId)}</td>
+                  <td>${r.day}<br><span style="color:var(--muted);font-size:.78rem">${r.date}</span></td>
+                  <td>${r.room}</td>
+                  <td>${r.slots.map((t) => `<span class="badge" style="margin:0 .2rem .2rem 0">${t}</span>`).join("")}</td>
+                  <td>${badge(r.status === "open" ? "open" : r.status === "limited" ? "limited" : "full")}</td>
+                </tr>`))}
+            <p style="margin:.85rem 0 0;color:var(--muted);font-size:.8rem;font-weight:600">Mock clinic timetable — replace with live published availability from your backend.</p>`;
         }
 
         if (current === "notifications") {
@@ -474,7 +502,14 @@
         if (!html) html = `<div class="panel"><div class="empty">You do not have RBAC permission for this view.</div></div>`;
         viewRoot.innerHTML = html;
 
-        viewRoot.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
+        viewRoot.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => {
+          if (b.dataset.specialty) viewRoot.dataset.specFilter = b.dataset.specialty;
+          go(b.dataset.go);
+        }));
+        viewRoot.querySelectorAll("[data-spec]").forEach((b) => b.addEventListener("click", () => {
+          viewRoot.dataset.specFilter = b.dataset.spec;
+          render();
+        }));
         const req = document.getElementById("requestVisit");
         if (req) req.addEventListener("click", () => showToast("Visit request recorded (demo). Backend TODO."));
         const appr = document.getElementById("approveAll");
