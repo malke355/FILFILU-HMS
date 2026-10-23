@@ -1,8 +1,9 @@
-# Filfilu HMS — Phase 1 (Frontend)
+# Filfilu HMS
 
-Demonstration frontend for the **Filfilu Hospital Duty Schedule Management System**.
+Demonstration **Hospital Duty Schedule Management System**.
 
-Phase 1 is **frontend only**: React + TypeScript + Vite + Tailwind + React Router + Lucide + React Hook Form + Zod. There is **no backend**, Prisma, PostgreSQL, or real authentication.
+- **Phase 1** — React + Vite frontend (`src/`) and premium landing (`landing/`)
+- **Phase 2** — Express + Prisma + SQLite API with JWT auth and RBAC/RLS (`backend/`)
 
 ## Live demo
 
@@ -67,13 +68,18 @@ src/
 
 Components do **not** mutate global mock arrays; all reads/writes go through services.
 
-## Phase 2 boundaries (not in this PR)
+## Phase 2 API (local)
 
-- Real API / auth (JWT/OAuth), Prisma, PostgreSQL
-- Server-side RBAC and audit logging
-- Clinical modules (medical records, pharmacy, billing, EMR)
-- Verified hospital contact details or production credentials
-- Email/SMS/WhatsApp delivery of notifications
+```bash
+cd backend
+npm install
+npm run db:generate && npm run db:push && npm run db:seed
+npm run dev
+```
+
+API runs at **http://127.0.0.1:4000**. Landing auth (`landing/js/auth.js`) prefers the API and falls back to offline demo data. See [`backend/README.md`](backend/README.md).
+
+Still out of scope: PostgreSQL RLS policies, clinical EMR modules, production credentials, email/SMS delivery.
 
 ## License
 

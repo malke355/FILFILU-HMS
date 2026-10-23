@@ -846,27 +846,53 @@
       }));
       document.getElementById("closeDialog").addEventListener("click", () => dialog.close());
       dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); });
-      form.addEventListener("submit", (e) => {
+      const API = (window.FILFILU_API_BASE || "http://127.0.0.1:4000/api").replace(/\/$/, "");
+      async function postApi(path, payload) {
+        const res = await fetch(`${API}${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        return body;
+      }
+
+      form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const name = form.elements.name.value.trim();
         const department = form.elements.department.value;
         const date = form.elements.date.value;
-        // TODO: send booking payload to backend API (name, department, date)
+        let text = `${name}, your ${department} visit is requested for ${date}.`;
+        try {
+          const res = await postApi("/bookings", { name, department, date });
+          if (res?.message) text = res.message;
+        } catch {
+          /* offline: keep local confirmation */
+        }
         form.hidden = true;
         success.hidden = false;
-        document.getElementById("successText").textContent =
-          `${name}, your ${department} visit is requested for ${date}.`;
+        document.getElementById("successText").textContent = text;
       });
 
-      /* Contact form — mock submit */
+      /* Contact form → API (falls back to local confirmation) */
       const contactForm = document.getElementById("contactForm");
       const contactMsg = document.getElementById("contactMsg");
-      contactForm.addEventListener("submit", (e) => {
+      contactForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const name = contactForm.elements.name.value.trim();
-        // TODO: POST contact payload to backend (name, email, topic, message)
+        const email = contactForm.elements.email.value.trim();
+        const topic = contactForm.elements.topic.value;
+        const message = contactForm.elements.message.value.trim();
+        let text = `Thanks, ${name}. Your message was recorded (demo).`;
+        try {
+          const res = await postApi("/contact", { name, email, topic, message });
+          if (res?.message) text = res.message;
+        } catch {
+          /* offline */
+        }
         contactMsg.style.display = "block";
-        contactMsg.textContent = `Thanks, ${name}. Your message was recorded (demo).`;
+        contactMsg.textContent = text;
         contactForm.reset();
       });
 

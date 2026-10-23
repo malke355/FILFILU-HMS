@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite: store role/status as strings (admin|doctor|nurse|patient, etc.)
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String
+  title        String?
+  staffId      String?  @unique
+  patientId    String?  @unique
+  ward         String?
+  dept         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  staff         Staff?         @relation(fields: [staffId], references: [id])
+  patient       Patient?       @relation(fields: [patientId], references: [id])
+  notifications Notification[]
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Staff {
+  id        String   @id @default(cuid())
+  name      String
+  role      String
+  dept      String
+  ward      String?
+  phone     String?
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+
+  user            User?
+  patients        Patient[]        @relation("PrimaryDoctor")
+  appointments    Appointment[]    @relation("DoctorAppointments")
+  shifts          Shift[]
+  exchangesFrom   Exchange[]       @relation("ExchangeFrom")
+  exchangesTo     Exchange[]       @relation("ExchangeTo")
+  doctorSchedules DoctorSchedule[]
+  publicProfile   DoctorPublic?
+}
+
+model Patient {
+  id        String   @id @default(cuid())
+  name      String
+  age       Int
+  sex       String?
+  blood     String?
+  phone     String?
+  condition String?
+  ward      String?
+  bed       String?
+  doctorId  String?
+  createdAt DateTime @default(now())
+
+  doctor       Staff?        @relation("PrimaryDoctor", fields: [doctorId], references: [id])
+  user         User?
+  appointments Appointment[]
+}
+
+model Appointment {
+  id        String   @id @default(cuid())
+  patientId String
+  doctorId  String
+  date      String
+  time      String
+  dept      String
+  reason    String?
+  status    String   @default("requested")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  doctor  Staff   @relation("DoctorAppointments", fields: [doctorId], references: [id])
+}
+
+model Shift {
+  id        String   @id @default(cuid())
+  staffId   String
+  date      String
+  slot      String
+  dept      String
+  unit      String?
+  status    String   @default("draft")
+  createdAt DateTime @default(now())
+
+  staff Staff @relation(fields: [staffId], references: [id])
+}
+
+model Exchange {
+  id          String   @id @default(cuid())
+  fromStaffId String
+  toStaffId   String
+  date        String
+  reason      String?
+  status      String   @default("pending_peer")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  fromStaff Staff @relation("ExchangeFrom", fields: [fromStaffId], references: [id])
+  toStaff   Staff @relation("ExchangeTo", fields: [toStaffId], references: [id])
+}
+
+model DoctorPublic {
+  id        String  @id @default(cuid())
+  doctorId  String  @unique
+  specialty String
+  onDuty    Boolean @default(false)
+  nextSlot  String?
+  rating    Float   @default(4.5)
+
+  doctor Staff @relation(fields: [doctorId], references: [id])
+}
+
+model DoctorSchedule {
+  id        String @id @default(cuid())
+  doctorId  String
+  specialty String
+  day       String
+  date      String
+  slotsJson String
+  room      String
+  status    String @default("open")
+
+  doctor Staff @relation(fields: [doctorId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  role      String?
+  text      String
+  level     String   @default("info")
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  topic     String
+  message   String
+  createdAt DateTime @default(now())
+}
+
+model BookingRequest {
+  id         String   @id @default(cuid())
+  name       String
+  department String
+  date       String
+  status     String   @default("requested")
+  createdAt  DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String?
+  metaJson  String?
+  createdAt DateTime @default(now())
+}
