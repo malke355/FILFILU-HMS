@@ -51,6 +51,26 @@ Demo password for all seeded users: `filfilu`
 | GET | `/api/notifications` | Bearer | Role/user alerts |
 | GET | `/api/dashboard/stats` | Bearer | Role KPI cards |
 | GET | `/api/reports/summary` | admin | Report totals |
+| GET | `/api/activity` | Bearer | Recent audit activity |
+| POST | `/api/exchanges` | staff | Request shift swap |
+| POST | `/api/exchanges/approve-pending` | admin | Approve all pending swaps |
+| POST | `/api/shifts/publish-drafts` | admin | Publish all draft shifts |
+| PATCH | `/api/appointments/:id` | Bearer | Update appointment status |
+
+## Product frontend
+
+The real product UI is the landing app:
+
+- http://127.0.0.1:8080/login.html
+- Workspace: `landing/app.html` (JWT session required)
+
+```bash
+# terminal 1
+cd backend && npm run dev
+
+# terminal 2
+cd landing && python3 -m http.server 8080 --bind 0.0.0.0
+```
 
 ## CORS
 

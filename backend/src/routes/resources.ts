@@ -172,6 +172,36 @@ router.get("/exchanges", async (req: AuthedRequest, res, next) => {
   }
 });
 
+router.post("/exchanges", requirePermission("exchanges:request"), async (req: AuthedRequest, res, next) => {
+  try {
+    const u = req.user!;
+    if (!u.staffId) return res.status(400).json({ error: "Staff profile required." });
+    const body = z.object({
+      toStaffId: z.string().min(1),
+      date: z.string().min(1),
+      reason: z.string().optional(),
+    }).parse(req.body);
+    if (body.toStaffId === u.staffId) {
+      return res.status(400).json({ error: "Cannot request a swap with yourself." });
+    }
+    const row = await prisma.exchange.create({
+      data: {
+        fromStaffId: u.staffId,
+        toStaffId: body.toStaffId,
+        date: body.date,
+        reason: body.reason,
+        status: "pending_peer",
+      },
+    });
+    await prisma.auditLog.create({
+      data: { actorId: u.sub, action: "exchange.create", entity: row.id, metaJson: JSON.stringify(body) },
+    });
+    res.status(201).json({ data: row });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch("/exchanges/:id", requirePermission("exchanges:approve", "exchanges:request"), async (req: AuthedRequest, res, next) => {
   try {
     const body = z.object({
@@ -190,6 +220,102 @@ router.patch("/exchanges/:id", requirePermission("exchanges:approve", "exchanges
       data: { actorId: u.sub, action: "exchange.update", entity: row.id, metaJson: JSON.stringify(body) },
     });
     res.json({ data: row });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/exchanges/approve-pending", requirePermission("exchanges:approve"), async (req: AuthedRequest, res, next) => {
+  try {
+    const pending = await prisma.exchange.findMany({
+      where: { status: { in: ["pending_peer", "peer_accepted", "pending_admin"] } },
+    });
+    const ids = pending.map((e) => e.id);
+    if (ids.length) {
+      await prisma.exchange.updateMany({
+        where: { id: { in: ids } },
+        data: { status: "approved" },
+      });
+      await prisma.auditLog.create({
+        data: {
+          actorId: req.user!.sub,
+          action: "exchange.approve_pending",
+          metaJson: JSON.stringify({ count: ids.length, ids }),
+        },
+      });
+    }
+    res.json({ data: { approved: ids.length } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/shifts/publish-drafts", requirePermission("schedule:publish"), async (req: AuthedRequest, res, next) => {
+  try {
+    const result = await prisma.shift.updateMany({
+      where: { status: "draft" },
+      data: { status: "published" },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.user!.sub,
+        action: "shift.publish_drafts",
+        metaJson: JSON.stringify({ count: result.count }),
+      },
+    });
+    res.json({ data: { published: result.count } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch("/appointments/:id", async (req: AuthedRequest, res, next) => {
+  try {
+    const u = req.user!;
+    const id = String(req.params.id);
+    const body = z.object({
+      status: z.enum(["draft", "requested", "confirmed", "cancelled", "completed"]),
+    }).parse(req.body);
+
+    const existing = await prisma.appointment.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: "Appointment not found." });
+
+    const allowed =
+      can(u.role, "appointments:manage") ||
+      (u.role === "doctor" && existing.doctorId === u.staffId) ||
+      (u.role === "patient" && existing.patientId === u.patientId && body.status === "cancelled");
+    if (!allowed) return res.status(403).json({ error: "Missing permission." });
+
+    const row = await prisma.appointment.update({
+      where: { id },
+      data: { status: body.status },
+    });
+    await prisma.auditLog.create({
+      data: { actorId: u.sub, action: "appointment.update", entity: row.id, metaJson: JSON.stringify(body) },
+    });
+    res.json({ data: row });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/activity", requireAuth, async (req: AuthedRequest, res, next) => {
+  try {
+    const u = req.user!;
+    const rows = await prisma.auditLog.findMany({
+      where: can(u.role, "reports:read") ? undefined : { actorId: u.sub },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+    res.json({
+      data: rows.map((r) => ({
+        id: r.id,
+        text: r.action.replaceAll(".", " · "),
+        entity: r.entity,
+        time: r.createdAt.toISOString(),
+        role: u.role,
+      })),
+    });
   } catch (err) {
     next(err);
   }

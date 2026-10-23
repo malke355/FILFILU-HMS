@@ -68,18 +68,23 @@ src/
 
 Components do **not** mutate global mock arrays; all reads/writes go through services.
 
-## Phase 2 API (local)
+## Full-stack product (landing + API)
+
+**Product UI:** http://127.0.0.1:8080/login.html  
 
 ```bash
-cd backend
-npm install
+# API
+cd backend && npm install
 npm run db:generate && npm run db:push && npm run db:seed
 npm run dev
+
+# Landing (separate terminal)
+cd landing && python3 -m http.server 8080 --bind 0.0.0.0
 ```
 
-API runs at **http://127.0.0.1:4000**. Landing auth (`landing/js/auth.js`) prefers the API and falls back to offline demo data. See [`backend/README.md`](backend/README.md).
+API: **http://127.0.0.1:4000** · Login requires a live API (JWT). See [`backend/README.md`](backend/README.md).
 
-Still out of scope: PostgreSQL RLS policies, clinical EMR modules, production credentials, email/SMS delivery.
+Still out of scope for later: PostgreSQL RLS, EMR/billing modules, email/SMS delivery.
 
 ## License
 
