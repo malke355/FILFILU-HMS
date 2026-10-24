@@ -4,7 +4,12 @@
  */
 (function (global) {
   const SESSION_KEY = "filfilu.session";
-  const API_BASE = (global.FILFILU_API_BASE || "http://127.0.0.1:4000/api").replace(/\/$/, "");
+  const API_BASE = (
+    global.FILFILU_API_BASE ||
+    (typeof location !== "undefined" && location.origin && location.protocol !== "file:"
+      ? `${location.origin}/api`
+      : "http://127.0.0.1:8080/api")
+  ).replace(/\/$/, "");
 
   /** @typedef {"admin"|"doctor"|"nurse"|"patient"} Role */
 
@@ -430,7 +435,7 @@
       // Full-stack product: API must be reachable (no silent offline login).
       return {
         ok: false,
-        error: err.message || "Cannot reach Filfilu API. Start the backend on :4000, then try again.",
+        error: err.message || "Cannot reach the Filfilu API on this site. Start the app, then try again.",
       };
     }
   }
@@ -478,7 +483,7 @@
       }
       return {
         ok: false,
-        error: err.message || "Cannot reach Filfilu API. Start the backend on :4000, then try again.",
+        error: err.message || "Cannot reach the Filfilu API on this site. Start the app, then try again.",
       };
     }
   }

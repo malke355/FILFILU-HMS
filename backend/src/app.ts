@@ -1,3 +1,5 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
@@ -8,6 +10,8 @@ import publicRoutes from "./routes/public.js";
 import resourceRoutes from "./routes/resources.js";
 import { errorHandler, notFound } from "./middleware/error.js";
 
+const landingDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../landing");
+
 function parseOrigins() {
   const raw = process.env.CORS_ORIGIN || "http://127.0.0.1:8080,http://localhost:8080";
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
@@ -16,7 +20,11 @@ function parseOrigins() {
 export function createApp() {
   const app = express();
 
-  app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }));
   app.use(
     cors({
       origin: parseOrigins(),
@@ -26,18 +34,12 @@ export function createApp() {
   app.use(express.json({ limit: "1mb" }));
   app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
-  app.get("/", (_req, res) => {
+  app.get("/api", (_req, res) => {
     res.json({
       name: "Filfilu HMS API",
       version: "1.0.0",
-      docs: {
-        health: "GET /api/health",
-        auth: "POST /api/auth/login | /api/auth/signup | GET /api/auth/me",
-        resources: "GET /api/staff | /patients | /appointments | /shifts | /exchanges | /notifications | /dashboard/stats | /activity",
-        mutations: "POST /api/appointments | /exchanges | /exchanges/approve-pending | /shifts/publish-drafts",
-        public: "GET /api/doctors | /doctor-schedules | /departments | /specialties",
-        forms: "POST /api/contact | /api/bookings",
-      },
+      ui: "/login.html",
+      health: "/api/health",
     });
   });
 
@@ -45,6 +47,8 @@ export function createApp() {
   app.use("/api/auth", authRoutes);
   app.use("/api", contactRoutes);
   app.use("/api", resourceRoutes);
+
+  app.use(express.static(landingDir));
 
   app.use(notFound);
   app.use(errorHandler);
