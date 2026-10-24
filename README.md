@@ -1,8 +1,9 @@
-# Filfilu HMS — Phase 1 (Frontend)
+# Filfilu HMS
 
-Demonstration frontend for the **Filfilu Hospital Duty Schedule Management System**.
+Demonstration **Hospital Duty Schedule Management System**.
 
-Phase 1 is **frontend only**: React + TypeScript + Vite + Tailwind + React Router + Lucide + React Hook Form + Zod. There is **no backend**, Prisma, PostgreSQL, or real authentication.
+- **Phase 1** — React + Vite frontend (`src/`) and premium landing (`landing/`)
+- **Phase 2** — Express + Prisma + SQLite API with JWT auth and RBAC/RLS (`backend/`)
 
 ## Live demo
 
@@ -12,12 +13,20 @@ Deployed automatically to GitHub Pages on every push to `main`.
 
 ## Quick start
 
+The product UI and API are one server on port **8080**.
+
 ```bash
+cd backend
 npm install
+npm run db:generate
+npm run db:push
+npm run db:seed
 npm run dev
 ```
 
-Open the URL Vite prints (usually `http://localhost:5173`). Local dev uses Vite’s root; production builds use `base: '/FILFILU-HMS/'` for project Pages.
+Open **http://127.0.0.1:8080/login.html**. Demo password for every seeded account: `filfilu`.
+
+The Phase 1 Vite UI is separate: from the repo root, `npm install` then `npm run dev` (usually http://localhost:5173).
 
 ### Other scripts
 
@@ -67,13 +76,15 @@ src/
 
 Components do **not** mutate global mock arrays; all reads/writes go through services.
 
-## Phase 2 boundaries (not in this PR)
+## Full-stack product (landing + API)
 
-- Real API / auth (JWT/OAuth), Prisma, PostgreSQL
-- Server-side RBAC and audit logging
-- Clinical modules (medical records, pharmacy, billing, EMR)
-- Verified hospital contact details or production credentials
-- Email/SMS/WhatsApp delivery of notifications
+**Product UI:** http://127.0.0.1:8080/login.html
+
+`npm run dev` inside `backend/` serves the landing pages and `/api` on that same port. Login calls `/api` on the page’s own host, so a second terminal is not required. See [`backend/README.md`](backend/README.md).
+
+**Google Sign-In:** the landing **Sign in with Google** button uses Express OAuth (`openid email profile`). Setup steps and redirect URIs are in [`backend/README.md`](backend/README.md#google-sign-in-oauth-20--openid-connect).
+
+Still out of scope for later: PostgreSQL RLS, EMR/billing modules, email/SMS delivery.
 
 ## License
 

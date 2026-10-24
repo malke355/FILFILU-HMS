@@ -1,9 +1,15 @@
 /**
- * Filfilu demo auth + RBAC + RLS (client-side mock).
- * TODO: replace with real JWT/httpOnly cookies and Postgres RLS policies.
+ * Filfilu auth + RBAC + RLS.
+ * Prefers the Phase-2 API (JWT); falls back to in-browser demo data if the API is offline.
  */
 (function (global) {
   const SESSION_KEY = "filfilu.session";
+  const API_BASE = (
+    global.FILFILU_API_BASE ||
+    (typeof location !== "undefined" && location.origin && location.protocol !== "file:"
+      ? `${location.origin}/api`
+      : "http://127.0.0.1:8080/api")
+  ).replace(/\/$/, "");
 
   /** @typedef {"admin"|"doctor"|"nurse"|"patient"} Role */
 
@@ -13,7 +19,7 @@
       short: "Admin",
       accent: "#1D6FE0",
       greeting: "Hospital operations command center",
-      blurb: "Manage staff, publish duty schedules, approve exchanges, and monitor hospital-wide activity.",
+      blurb: "Set up users and roles, publish rosters, oversee appointments, and keep the system safe — not clinical charting.",
     },
     doctor: {
       label: "Doctor",
@@ -94,7 +100,33 @@
     ],
   };
 
-  const DB = {
+  function t(key, vars) {
+    const I = global.FilfiluI18n;
+    if (!I || !I.t) return key;
+    return I.t(key, vars);
+  }
+
+  function roleMeta(role) {
+    const base = ROLE_META[role];
+    if (!base) return base;
+    if (!global.FilfiluI18n) return { ...base };
+    return {
+      ...base,
+      label: t("role." + role),
+      short: t("role." + role + ".short"),
+      greeting: t("role." + role + ".greeting"),
+      blurb: t("role." + role + ".blurb"),
+    };
+  }
+
+  function navFor(role) {
+    return (NAV[role] || []).map((item) => ({
+      ...item,
+      label: global.FilfiluI18n ? t("nav." + role + "." + item.id) : item.label,
+    }));
+  }
+
+    const DB = {
     users: [
       { id: "u-admin", role: "admin", name: "Selam Bekele", email: "admin@filfilu.com", password: "filfilu", title: "Hospital Administrator" },
       { id: "u-doc-1", role: "doctor", name: "Dr. Helen Tesfaye", email: "doctor@filfilu.com", password: "filfilu", staffId: "s-doc-1", dept: "General Medicine", title: "Consultant Physician" },
@@ -222,26 +254,241 @@
     sessionStorage.removeItem(SESSION_KEY);
   }
 
-  function toSession(user) {
+  function toSession(user, token) {
     const role = normalizeRole(user.role);
+    const userId = user.userId || user.id;
     return {
-      userId: user.id,
+      userId,
       role,
       name: user.name,
       email: user.email,
-      title: user.title || ROLE_META[role].label,
+      title: user.title || roleMeta(role).label,
       staffId: user.staffId || null,
       patientId: user.patientId || null,
       ward: user.ward || null,
       dept: user.dept || null,
-      meta: ROLE_META[role],
-      permissions: PERMISSIONS[role].slice(),
+      meta: roleMeta(role),
+      permissions: (user.permissions && user.permissions.length ? user.permissions : PERMISSIONS[role]).slice(),
+      token: token || null,
+      source: token ? "api" : "local",
       loggedInAt: new Date().toISOString(),
     };
   }
 
-  /** Perfect role assignment: account role always wins when email matches a demo user. */
-  function login({ email, password, role }) {
+  async function api(path, options = {}) {
+    const headers = { ...(options.headers || {}) };
+    if (options.body != null && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    const session = readSession();
+    if (session?.token && session.token !== "cookie" && !headers.Authorization) {
+      headers.Authorization = `Bearer ${session.token}`;
+    }
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+    let body = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+    if (!res.ok) {
+      const err = new Error((body && body.error) || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.body = body;
+      throw err;
+    }
+    return body;
+  }
+
+  let cachedStats = null;
+  let cachedActivity = [];
+
+  async function restoreSessionFromCookie() {
+    try {
+      const body = await api("/auth/me");
+      if (!body?.user) return null;
+      const session = toSession(body.user, "cookie");
+      session.cookieAuth = true;
+      writeSession(session);
+      return session;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Start Google OAuth.
+   * @param {{ intent?: "login"|"signup", role?: string }} [opts]
+   * - login: only existing Filfilu accounts
+   * - signup: create account for new Google email (role defaults to patient)
+   */
+  function beginGoogleSignIn(opts = {}) {
+    const intent = opts.intent === "signup" ? "signup" : "login";
+    const params = new URLSearchParams({ intent });
+    if (intent === "signup" && opts.role) params.set("role", opts.role);
+    location.href = `${API_BASE}/auth/google?${params}`;
+  }
+
+  async function logout() {
+    try {
+      await api("/auth/logout", { method: "POST", body: "{}" });
+    } catch {
+      /* ignore network errors — still clear local session */
+    }
+    clearSession();
+  }
+
+  async function hydrateFromApi(session) {
+    if (!session?.token && !session?.cookieAuth) return session;
+    const [staff, patients, appointments, shifts, exchanges, notifications, doctors, schedules, stats, activity] =
+      await Promise.all([
+        api("/staff").catch(() => null),
+        api("/patients").catch(() => null),
+        api("/appointments").catch(() => null),
+        api("/shifts").catch(() => null),
+        api("/exchanges").catch(() => null),
+        api("/notifications").catch(() => null),
+        api("/doctors").catch(() => null),
+        api("/doctor-schedules").catch(() => null),
+        api("/dashboard/stats").catch(() => null),
+        api("/activity").catch(() => null),
+      ]);
+    if (staff?.data) DB.staff = staff.data;
+    if (patients?.data) {
+      DB.patients = patients.data.map((p) => ({
+        ...p,
+        doctorId: p.doctorId || p.doctor?.id || null,
+      }));
+    }
+    if (appointments?.data) DB.appointments = appointments.data;
+    if (shifts?.data) DB.shifts = shifts.data;
+    if (exchanges?.data) DB.exchanges = exchanges.data;
+    if (notifications?.data) {
+      DB.notifications = notifications.data.map((n) => ({
+        id: n.id,
+        role: n.role || session.role,
+        text: n.text,
+        level: n.level,
+        time: n.createdAt ? new Date(n.createdAt).toLocaleString() : "just now",
+      }));
+    }
+    if (doctors?.data) DB.doctorsPublic = doctors.data;
+    if (schedules?.data) {
+      DB.doctorSchedules = schedules.data.map((s) => ({
+        ...s,
+        slots: Array.isArray(s.slots) ? s.slots : [],
+      }));
+    }
+    if (stats?.data) cachedStats = stats.data;
+    if (activity?.data) {
+      cachedActivity = activity.data.map((a) => ({
+        role: session.role,
+        text: a.text,
+        time: a.time ? new Date(a.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—",
+      }));
+      DB.activity = cachedActivity;
+    }
+    session.source = "api";
+    writeSession(session);
+    return session;
+  }
+
+  async function requestAppointment({ doctorId, date, time, dept, reason }) {
+    const body = await api("/appointments", {
+      method: "POST",
+      body: JSON.stringify({ doctorId, date, time, dept, reason }),
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  async function requestVisitFromSchedule() {
+    const session = readSession();
+    const open = (DB.doctorSchedules || []).find((s) => s.status !== "full" && (s.slots || []).length);
+    if (!open) throw new Error("No open clinic slots available.");
+    return requestAppointment({
+      doctorId: open.doctorId,
+      date: open.date,
+      time: open.slots[0],
+      dept: open.specialty,
+      reason: "Patient visit request",
+    });
+  }
+
+  async function approvePendingExchanges() {
+    const body = await api("/exchanges/approve-pending", { method: "POST", body: "{}" });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  async function publishDraftShifts() {
+    const body = await api("/shifts/publish-drafts", { method: "POST", body: "{}" });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  async function requestExchange({ toStaffId, date, reason }) {
+    const body = await api("/exchanges", {
+      method: "POST",
+      body: JSON.stringify({ toStaffId, date, reason }),
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  async function updateAppointmentStatus(id, patch) {
+    const payload = typeof patch === "string" ? { status: patch } : patch;
+    const body = await api(`/appointments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  async function respondToExchange(id, status) {
+    const body = await api(`/exchanges/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  async function updateStaff(id, patch) {
+    const body = await api(`/staff/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  async function cleanupDuplicateAppointments() {
+    const body = await api("/appointments/cleanup-duplicates", {
+      method: "POST",
+      body: "{}",
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  function findDuplicateAppointmentGroups(session) {
+    const rows = rls.appointments(session).filter((a) => a.status === "requested" || a.status === "confirmed");
+    const groups = new Map();
+    for (const a of rows) {
+      const key = [a.patientId, a.doctorId, a.date, a.time, a.reason || "", a.status].join("|");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(a);
+    }
+    return [...groups.values()].filter((g) => g.length > 1);
+  }
+
+  function loginLocal({ email, password, role }) {
     const wanted = normalizeRole(role);
     const found = DB.users.find(
       (u) => u.email.toLowerCase() === String(email || "").trim().toLowerCase(),
@@ -254,15 +501,14 @@
       if (wanted && wanted !== found.role) {
         return {
           ok: false,
-          error: `This account is assigned the ${ROLE_META[found.role].label} role. Choose “${ROLE_META[found.role].short}” or use another demo account.`,
+          error: `This account is assigned the ${roleMeta(found.role).label} role. Choose “${roleMeta(found.role).short}” or use another demo account.`,
         };
       }
-      const session = toSession(found);
+      const session = toSession(found, null);
       writeSession(session);
-      return { ok: true, session };
+      return { ok: true, session, offline: true };
     }
 
-    // Unknown email: require an explicit role and create a scoped demo session
     if (!wanted) return { ok: false, error: "Select a workspace role before signing in." };
     if (!password) return { ok: false, error: "Enter your password." };
     const template = DB.users.find((u) => u.role === wanted);
@@ -272,47 +518,131 @@
       name: template.name,
       email: String(email).trim(),
       role: wanted,
-    });
+    }, null);
     session.demo = true;
     writeSession(session);
-    return { ok: true, session, demo: true };
+    return { ok: true, session, demo: true, offline: true };
   }
 
-  function signup({ first, last, email, role, password }) {
+  /** Perfect role assignment: account role always wins when email matches. */
+  async function login({ email, password, role }) {
+    try {
+      const body = await api("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password, role: role || undefined }),
+      });
+      const session = toSession(body.user, body.token);
+      writeSession(session);
+      await hydrateFromApi(session);
+      return { ok: true, session };
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) {
+        return { ok: false, error: err.message || "Login failed." };
+      }
+      // Full-stack product: API must be reachable (no silent offline login).
+      return {
+        ok: false,
+        error: err.message || "Cannot reach the Filfilu API on this site. Start the app, then try again.",
+      };
+    }
+  }
+
+  function signupLocal({ first, last, email, role, password }) {
     const r = normalizeRole(role);
     if (!r) return { ok: false, error: "Choose a valid role to assign." };
     if (!password || password.length < 6) return { ok: false, error: "Password must be at least 6 characters." };
     const exists = DB.users.some((u) => u.email.toLowerCase() === String(email).trim().toLowerCase());
     if (exists) return { ok: false, error: "An account with this email already exists. Please login." };
 
-    // TODO: POST /api/auth/signup — server assigns RBAC role
     const template = DB.users.find((u) => u.role === r);
     const session = toSession({
       id: `u-new-${Date.now()}`,
       role: r,
       name: `${first} ${last}`.trim(),
       email: String(email).trim(),
-      title: ROLE_META[r].label,
+      title: roleMeta(r).label,
       staffId: template.staffId || null,
       patientId: r === "patient" ? template.patientId || "p-1" : null,
       ward: template.ward || null,
       dept: template.dept || null,
-    });
+    }, null);
     session.demo = true;
     writeSession(session);
-    return { ok: true, session };
+    return { ok: true, session, offline: true };
+  }
+
+  async function signup({ first, last, email, role, password }) {
+    const r = normalizeRole(role);
+    if (!r) return { ok: false, error: "Choose a valid role to assign." };
+    if (!password || password.length < 6) return { ok: false, error: "Password must be at least 6 characters." };
+    try {
+      const body = await api("/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({ first, last, email, password, role: r }),
+      });
+      const session = toSession(body.user, body.token);
+      writeSession(session);
+      await hydrateFromApi(session);
+      return { ok: true, session };
+    } catch (err) {
+      if (err.status === 409 || err.status === 400) {
+        return { ok: false, error: err.message || "Sign up failed." };
+      }
+      return {
+        ok: false,
+        error: err.message || "Cannot reach the Filfilu API on this site. Start the app, then try again.",
+      };
+    }
+  }
+
+  async function postContact(payload) {
+    return api("/contact", { method: "POST", body: JSON.stringify(payload) });
+  }
+
+  async function postBooking(payload) {
+    return api("/bookings", { method: "POST", body: JSON.stringify(payload) });
   }
 
   function requireAuth() {
     const session = readSession();
+    const hasAuth = session && normalizeRole(session.role) && (session.token || session.cookieAuth);
+    if (!hasAuth) {
+      clearSession();
+      location.href = "login.html";
+      return null;
+    }
+    session.meta = roleMeta(session.role);
+    session.permissions = (session.permissions && session.permissions.length
+      ? session.permissions
+      : PERMISSIONS[session.role]
+    ).slice();
+    return session;
+  }
+
+  async function bootWorkspace() {
+    let session = readSession();
+    if (!session?.token && !session?.cookieAuth) {
+      session = await restoreSessionFromCookie();
+    }
     if (!session || !normalizeRole(session.role)) {
       clearSession();
       location.href = "login.html";
       return null;
     }
     session.meta = ROLE_META[session.role];
-    session.permissions = PERMISSIONS[session.role].slice();
-    return session;
+    session.permissions = (session.permissions && session.permissions.length
+      ? session.permissions
+      : PERMISSIONS[session.role]
+    ).slice();
+    writeSession(session);
+    try {
+      await hydrateFromApi(session);
+      return readSession();
+    } catch (err) {
+      clearSession();
+      location.href = "login.html";
+      return null;
+    }
   }
 
   function can(session, permission) {
@@ -358,7 +688,10 @@
     },
     shifts(session) {
       if (can(session, "schedule:read") || can(session, "schedule:write")) return DB.shifts;
-      if (can(session, "schedule:read_own")) return DB.shifts.filter((s) => s.staffId === session.staffId);
+      if (can(session, "schedule:read_own")) {
+        // Own roster only — drafts stay hidden until published.
+        return DB.shifts.filter((s) => s.staffId === session.staffId && s.status === "published");
+      }
       return [];
     },
     staff(session) {
@@ -377,6 +710,7 @@
       return DB.notifications.filter((n) => n.role === session.role);
     },
     activity(session) {
+      if (cachedActivity.length) return cachedActivity;
       return DB.activity.filter((a) => a.role === session.role);
     },
     doctorsPublic() {
@@ -394,6 +728,7 @@
   };
 
   function statsFor(session) {
+    if (cachedStats && cachedStats.length) return cachedStats;
     const appts = rls.appointments(session);
     const shifts = rls.shifts(session);
     const patients = rls.patients(session);
@@ -468,12 +803,32 @@
 
   global.FilfiluAuth = {
     ROLE_META,
+    roleMeta,
+    navFor,
     PERMISSIONS,
     NAV,
     DB,
+    API_BASE,
+    api,
     login,
     signup,
-    logout: clearSession,
+    beginGoogleSignIn,
+    restoreSessionFromCookie,
+    postContact,
+    postBooking,
+    hydrateFromApi,
+    bootWorkspace,
+    requestAppointment,
+    requestVisitFromSchedule,
+    approvePendingExchanges,
+    publishDraftShifts,
+    requestExchange,
+    updateAppointmentStatus,
+    respondToExchange,
+    updateStaff,
+    cleanupDuplicateAppointments,
+    findDuplicateAppointmentGroups,
+    logout,
     session: readSession,
     requireAuth,
     can,
