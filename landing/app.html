@@ -159,6 +159,7 @@
     .badge.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
     .badge.warn { background: #FEF3C7; color: var(--warn); }
     .badge.danger { background: #FEE2E2; color: var(--danger); }
+    .badge.urgent { background: #FEE2E2; color: var(--danger); margin-left: .35rem; }
     .list { display: grid; }
     .list-item {
       display: grid; grid-template-columns: 10px 1fr auto; gap: .75rem; align-items: start;
@@ -197,6 +198,31 @@
     }
     .toast.show { display: block; animation: rise .35s var(--ease); }
     @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+    .help-copy {
+      margin: 0; padding: 0 1.15rem 1rem; color: var(--muted); font-size: .8rem; line-height: 1.55; font-weight: 600;
+    }
+    .visit-form {
+      display: none; padding: 0 1.15rem 1.15rem; border-top: 1px solid var(--line);
+    }
+    .visit-form.open { display: block; animation: rise .3s var(--ease); }
+    .visit-form .form-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: .85rem; padding-top: 1rem;
+    }
+    .field { display: grid; gap: .35rem; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .field input, .field select, .field textarea {
+      width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: .7rem .85rem;
+      background: var(--bg); color: var(--navy); font-weight: 650;
+    }
+    .field textarea { min-height: 72px; resize: vertical; }
+    .field input:disabled, .field input[readonly] { opacity: .85; cursor: default; }
+    .form-actions { display: flex; flex-wrap: wrap; gap: .5rem; padding-top: .35rem; }
+    .row-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+    .btn.tiny { padding: .35rem .7rem; font-size: .72rem; }
+    @media (max-width: 700px) {
+      .visit-form .form-grid { grid-template-columns: 1fr; }
+    }
     @media (max-width: 1100px) {
       .stats, .cards { grid-template-columns: 1fr 1fr; }
       .grid-2, .profile-grid { grid-template-columns: 1fr; }
@@ -334,10 +360,22 @@
 
       function badge(status) {
         const s = String(status || "");
-        const cls = /confirm|publish|active|approved|ok/i.test(s) ? "ok"
+        const cls = /confirm|publish|active|approved|ok|completed/i.test(s) ? "ok"
           : /draft|pending|request|peer/i.test(s) ? "warn"
-          : /deny|cancel|fail/i.test(s) ? "danger" : "";
+          : /deny|cancel|fail|no.?show/i.test(s) ? "danger" : "";
         return `<span class="badge ${cls}">${s.replaceAll("_", " ")}</span>`;
+      }
+
+      function isUrgentReason(reason) {
+        return /chest|emerg|urgent|bleed|shortness|stroke|seizure|trauma|severe/i.test(String(reason || ""));
+      }
+
+      function reasonCell(reason, dept) {
+        const text = reason || dept || "—";
+        const urgent = isUrgentReason(reason)
+          ? `<span class="badge urgent" title="Priority review">Urgent</span>`
+          : "";
+        return `${text}${urgent}`;
       }
 
       function matchQuery(values) {
@@ -405,28 +443,127 @@
         if (current === "overview") html = renderOverview();
 
         if (current === "staff" && Auth.can(session, "staff:read")) {
-          html = table(["Staff", "Assigned role", "Department", "Contact", "Status"],
-            Auth.rls.staff(session).filter((s) => matchQuery([s.name, s.role, s.dept])).map((s) =>
-              `<tr><td><strong>${s.name}</strong></td><td>${badge(s.role)}</td><td>${s.dept}${s.ward ? " · " + s.ward : ""}</td><td>${s.phone || "—"}</td><td>${badge(s.status)}</td></tr>`));
+          const canWrite = Auth.can(session, "staff:write");
+          const headers = ["Staff", "Assigned role", "Department", "Contact", "Status"].concat(canWrite ? ["Actions"] : []);
+          html = table(headers,
+            Auth.rls.staff(session).filter((s) => matchQuery([s.name, s.role, s.dept])).map((s) => {
+              const actions = [];
+              if (canWrite) {
+                if (s.status === "active") {
+                  actions.push(`<button class="btn soft tiny" type="button" data-staff-action="deactivate" data-id="${s.id}" data-name="${s.name}">Deactivate</button>`);
+                } else {
+                  actions.push(`<button class="btn tiny" type="button" data-staff-action="reactivate" data-id="${s.id}" data-name="${s.name}">Reactivate</button>`);
+                }
+              }
+              return `<tr><td><strong>${s.name}</strong></td><td>${badge(s.role)}</td><td>${s.dept}${s.ward ? " · " + s.ward : ""}</td><td>${s.phone || "—"}</td><td>${badge(s.status)}</td>${canWrite ? `<td class="row-actions">${actions.join("") || "—"}</td>` : ""}</tr>`;
+            }));
+          if (canWrite) {
+            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>User &amp; role management</h3><span>API · staff:write</span></div>
+              <p class="help-copy">Admins set up accounts and access — they do not do clinical work. Deactivate leavers instead of deleting so history and audit trails stay intact. You cannot deactivate your own account.</p></div>` + html;
+          }
         }
 
         if (current === "schedule") {
+          const shifts = Auth.rls.shifts(session).filter((s) => matchQuery([s.date, s.dept, s.unit, Auth.staffName(s.staffId)]));
+          const drafts = shifts.filter((s) => s.status === "draft").length;
+          const published = shifts.filter((s) => s.status === "published").length;
           html = table(["Date", "Staff", "Unit", "Slot", "Department", "Status"],
-            Auth.rls.shifts(session).filter((s) => matchQuery([s.date, s.dept, s.unit, Auth.staffName(s.staffId)])).map((s) =>
+            shifts.map((s) =>
               `<tr><td>${s.date}</td><td>${Auth.staffName(s.staffId)}</td><td>${s.unit || "—"}</td><td>${s.slot}</td><td>${s.dept}</td><td>${badge(s.status)}</td></tr>`));
           if (Auth.can(session, "schedule:publish")) {
-            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Publish roster</h3><span>API · schedule:publish</span></div>
+            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Publish roster</h3><span>${drafts} draft · ${published} published</span></div>
+              <p class="help-copy">Keep rosters in draft until ready. Publishing notifies staff. Check coverage before you publish so units are not left empty.</p>
               <div class="actions"><button class="btn" type="button" id="publishDrafts">Publish all draft shifts</button></div></div>` + html;
           }
         }
 
         if (current === "appointments") {
-          html = table(["Date", "Time", "Patient", "Doctor", "Reason", "Status"],
-            Auth.rls.appointments(session).filter((a) => matchQuery([a.date, a.dept, a.reason, Auth.patientName(a.patientId), Auth.staffName(a.doctorId)])).map((a) =>
-              `<tr><td>${a.date}</td><td>${a.time}</td><td>${Auth.patientName(a.patientId)}</td><td>${Auth.staffName(a.doctorId)}</td><td>${a.reason || a.dept}</td><td>${badge(a.status)}</td></tr>`));
+          const isDoctor = session.role === "doctor";
+          const isAdminOps = Auth.can(session, "appointments:manage") && session.role === "admin";
+          const canCancelOwn = session.role === "patient";
+          const showActions = isDoctor || isAdminOps || canCancelOwn;
+          const headers = ["Date", "Time", "Patient", "Doctor", "Reason", "Status"].concat(showActions ? ["Actions"] : []);
+          const rows = Auth.rls.appointments(session)
+            .filter((a) => matchQuery([a.date, a.dept, a.reason, Auth.patientName(a.patientId), Auth.staffName(a.doctorId)]))
+            .slice()
+            .sort((a, b) => Number(isUrgentReason(b.reason)) - Number(isUrgentReason(a.reason)));
+          const dupGroups = isAdminOps ? Auth.findDuplicateAppointmentGroups(session) : [];
+          const doctorOptions = Auth.DB.staff.filter((s) => s.role === "doctor" && s.status === "active");
+          html = table(headers, rows.map((a) => {
+              const actions = [];
+              if (isDoctor && a.doctorId === session.staffId && a.status === "requested") {
+                actions.push(`<button class="btn tiny" type="button" data-appt-action="confirm" data-id="${a.id}">Confirm</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="reschedule" data-id="${a.id}" data-date="${a.date}" data-time="${a.time}">Reschedule</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${a.id}">Decline</button>`);
+              }
+              if (isDoctor && a.doctorId === session.staffId && a.status === "confirmed") {
+                actions.push(`<button class="btn tiny" type="button" data-appt-action="complete" data-id="${a.id}">Complete</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="no_show" data-id="${a.id}">No-show</button>`);
+              }
+              if (isAdminOps && (a.status === "requested" || a.status === "confirmed")) {
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="reassign" data-id="${a.id}" data-doctor="${a.doctorId}">Reassign</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${a.id}">Cancel</button>`);
+              }
+              if (canCancelOwn && a.patientId === session.patientId && (a.status === "requested" || a.status === "confirmed")) {
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${a.id}">Cancel</button>`);
+              }
+              const actionCell = showActions
+                ? `<td class="row-actions">${actions.join("") || "—"}</td>`
+                : "";
+              return `<tr><td>${a.date}</td><td>${a.time}</td><td>${Auth.patientName(a.patientId)}</td><td>${Auth.staffName(a.doctorId)}</td><td>${reasonCell(a.reason, a.dept)}</td><td>${badge(a.status)}</td>${actionCell}</tr>`;
+            }));
+          if (isAdminOps) {
+            const dupCount = dupGroups.reduce((n, g) => n + g.length - 1, 0);
+            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Clinic oversight</h3><span>API · appointments:manage</span></div>
+              <p class="help-copy">Admins oversee the clinic calendar — reassign or cancel when a doctor is absent. Clinical confirm/complete stays with doctors. ${dupCount ? `<strong>${dupCount} duplicate request(s)</strong> detected.` : "No duplicate requests detected."}</p>
+              <div class="actions">
+                <button class="btn" type="button" id="cleanupDupes"${dupCount ? "" : " disabled"}>Clean up duplicates</button>
+              </div>
+              <select id="reassignDoctorPool" hidden>${doctorOptions.map((d) => `<option value="${d.id}" data-dept="${d.dept || ""}">${d.name} · ${d.dept || "Clinic"}</option>`).join("")}</select>
+            </div>` + html;
+          }
           if (session.role === "patient") {
-            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Request a visit</h3><span>API · appointments:request</span></div>
-              <div class="actions"><button class="btn" type="button" id="requestVisit">Request new appointment</button></div></div>` + html;
+            const doctors = Auth.rls.doctorsPublic();
+            const doctorOpts = doctors.map((d) =>
+              `<option value="${d.id}" data-dept="${d.specialty || ""}">${d.name} · ${d.specialty || "Clinic"}</option>`).join("");
+            html = `<div class="panel" style="margin-bottom:1rem" id="visitPanel">
+              <div class="panel-h"><h3>Request a visit</h3><span>API · appointments:request</span></div>
+              <p class="help-copy">Choose a doctor, preferred date and time, and a short reason (for example “BP check” or “Chest discomfort”). Your name is filled from your login. After you submit, the visit appears as <strong>requested</strong> until staff confirm it.</p>
+              <div class="actions"><button class="btn" type="button" id="requestVisit">Request new appointment</button></div>
+              <form class="visit-form" id="visitForm" novalidate>
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="visitPatient">Patient</label>
+                    <input id="visitPatient" name="patient" type="text" readonly value="${session.name}" />
+                  </div>
+                  <div class="field">
+                    <label for="visitDoctor">Doctor / department</label>
+                    <select id="visitDoctor" name="doctorId" required>
+                      <option value="">Select a doctor</option>
+                      ${doctorOpts}
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="visitDate">Preferred date</label>
+                    <input id="visitDate" name="date" type="date" required />
+                  </div>
+                  <div class="field">
+                    <label for="visitTime">Preferred time</label>
+                    <select id="visitTime" name="time" required>
+                      <option value="">Select a time</option>
+                    </select>
+                  </div>
+                  <div class="field full">
+                    <label for="visitReason">Reason for visit</label>
+                    <input id="visitReason" name="reason" type="text" maxlength="120" placeholder="e.g. BP check, Chest discomfort" required />
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button class="btn" type="submit" id="visitSubmit">Submit request</button>
+                  <button class="btn soft" type="button" id="visitCancel">Close</button>
+                </div>
+              </form>
+            </div>` + html;
           }
         }
 
@@ -437,17 +574,36 @@
         }
 
         if (current === "exchanges") {
-          html = table(["Date", "From", "To", "Reason", "Status"],
-            Auth.rls.exchanges(session).filter((e) => matchQuery([e.date, e.reason || "", Auth.staffName(e.fromStaffId), Auth.staffName(e.toStaffId)])).map((e) =>
-              `<tr><td>${e.date}</td><td>${Auth.staffName(e.fromStaffId)}</td><td>${Auth.staffName(e.toStaffId)}</td><td>${e.reason || "—"}</td><td>${badge(e.status)}</td></tr>`));
+          const canPeerRespond = Auth.can(session, "exchanges:request") && session.staffId;
+          html = table(["Date", "From", "To", "Reason", "Status", "Actions"],
+            Auth.rls.exchanges(session).filter((e) => matchQuery([e.date, e.reason || "", Auth.staffName(e.fromStaffId), Auth.staffName(e.toStaffId)])).map((e) => {
+              const actions = [];
+              if (canPeerRespond && e.toStaffId === session.staffId && e.status === "pending_peer") {
+                actions.push(`<button class="btn tiny" type="button" data-ex-action="peer_accepted" data-id="${e.id}">Accept</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-ex-action="denied" data-id="${e.id}">Decline</button>`);
+              }
+              return `<tr><td>${e.date}</td><td>${Auth.staffName(e.fromStaffId)}</td><td>${Auth.staffName(e.toStaffId)}</td><td>${e.reason || "—"}</td><td>${badge(e.status)}</td><td class="row-actions">${actions.join("") || "—"}</td></tr>`;
+            }));
           if (Auth.can(session, "exchanges:approve")) {
             html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Admin approvals</h3><span>API · exchanges:approve</span></div>
+              <p class="help-copy">Final approve/deny after a colleague accepts. Doctors cannot approve their own swap.</p>
               <div class="actions"><button class="btn" type="button" id="approveAll">Approve pending swaps</button></div></div>` + html;
           } else if (Auth.can(session, "exchanges:request") && session.staffId) {
-            const peers = Auth.DB.staff.filter((s) => s.id !== session.staffId && (s.role === "doctor" || s.role === "nurse"));
+            const myDept = session.dept;
+            const peers = Auth.DB.staff.filter((s) =>
+              s.id !== session.staffId &&
+              s.role === session.role &&
+              (!myDept || s.dept === myDept) &&
+              s.status === "active");
+            const peerOpts = peers.map((p) => `<option value="${p.id}">${p.name} · ${p.dept || "Unit"}</option>`).join("");
             html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Request a swap</h3><span>API · exchanges:request</span></div>
-              <div class="actions">
-                <button class="btn" type="button" id="requestSwap" data-peer="${peers[0]?.id || ""}">Request swap with ${peers[0]?.name || "peer"}</button>
+              <p class="help-copy">Request a swap with another ${session.role} in ${myDept || "your department"}. They accept or decline; admin gives the final approval.</p>
+              <div class="actions" style="align-items:center">
+                <select id="swapPeer" style="border:1px solid var(--line);border-radius:999px;padding:.65rem .9rem;background:var(--panel);color:var(--navy);font-weight:700">
+                  <option value="">Select colleague</option>
+                  ${peerOpts || "<option value=\"\" disabled>No same-department peer available</option>"}
+                </select>
+                <button class="btn" type="button" id="requestSwap">Request swap</button>
               </div></div>` + html;
           }
         }
@@ -528,23 +684,186 @@
           render();
         }));
         const req = document.getElementById("requestVisit");
-        if (req) {
-          req.addEventListener("click", async () => {
-            req.disabled = true;
+        const visitForm = document.getElementById("visitForm");
+        if (req && visitForm) {
+          const doctorEl = document.getElementById("visitDoctor");
+          const dateEl = document.getElementById("visitDate");
+          const timeEl = document.getElementById("visitTime");
+          const reasonEl = document.getElementById("visitReason");
+          const cancelEl = document.getElementById("visitCancel");
+          const submitEl = document.getElementById("visitSubmit");
+
+          const schedulesForDoctor = (doctorId) =>
+            (Auth.DB.doctorSchedules || []).filter((s) => s.doctorId === doctorId && s.status !== "full");
+
+          const fillTimes = () => {
+            const doctorId = doctorEl.value;
+            const date = dateEl.value;
+            const schedules = schedulesForDoctor(doctorId);
+            const match = schedules.find((s) => s.date === date);
+            const slots = match?.slots?.length
+              ? match.slots
+              : ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00"];
+            const prev = timeEl.value;
+            timeEl.innerHTML = `<option value="">Select a time</option>${slots.map((t) => `<option value="${t}">${t}</option>`).join("")}`;
+            if (slots.includes(prev)) timeEl.value = prev;
+          };
+
+          const suggestDate = () => {
+            const doctorId = doctorEl.value;
+            if (!doctorId) return;
+            const next = schedulesForDoctor(doctorId).find((s) => (s.slots || []).length);
+            if (next?.date) dateEl.value = next.date;
+            else if (!dateEl.value) {
+              const d = new Date();
+              d.setDate(d.getDate() + 1);
+              dateEl.value = d.toISOString().slice(0, 10);
+            }
+            fillTimes();
+          };
+
+          req.addEventListener("click", () => {
+            visitForm.classList.add("open");
+            req.hidden = true;
+            if (!doctorEl.value && doctorEl.options.length > 1) doctorEl.selectedIndex = 1;
+            suggestDate();
+            reasonEl.focus();
+          });
+          cancelEl.addEventListener("click", () => {
+            visitForm.classList.remove("open");
+            req.hidden = false;
+            visitForm.reset();
+            document.getElementById("visitPatient").value = session.name;
+          });
+          doctorEl.addEventListener("change", suggestDate);
+          dateEl.addEventListener("change", fillTimes);
+          visitForm.addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            const doctorId = doctorEl.value;
+            const date = dateEl.value;
+            const time = timeEl.value;
+            const reason = reasonEl.value.trim();
+            const opt = doctorEl.selectedOptions[0];
+            const dept = opt?.dataset?.dept || "General Medicine";
+            if (!doctorId || !date || !time || !reason) {
+              showToast("Choose a doctor, date, time, and reason.");
+              return;
+            }
+            submitEl.disabled = true;
             try {
-              const res = await Auth.requestVisitFromSchedule();
+              const res = await Auth.requestAppointment({ doctorId, date, time, dept, reason });
               showToast(`Visit requested · ${res.data.date} ${res.data.time}`);
               render();
             } catch (err) {
               showToast(err.message || "Could not request visit.");
             } finally {
-              req.disabled = false;
+              submitEl.disabled = false;
             }
           });
         }
+
+        viewRoot.querySelectorAll("[data-appt-action]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.dataset.id;
+            const action = btn.dataset.apptAction;
+            let patch = null;
+            if (action === "confirm") patch = { status: "confirmed" };
+            else if (action === "cancel") {
+              if (session.role === "admin" && !window.confirm("Cancel this appointment? This is logged for audit.")) return;
+              patch = { status: "cancelled" };
+            }
+            else if (action === "complete") patch = { status: "completed" };
+            else if (action === "no_show") patch = { status: "no_show" };
+            else if (action === "reschedule") {
+              const date = window.prompt("New date (YYYY-MM-DD)", btn.dataset.date || "");
+              if (!date) return;
+              const time = window.prompt("New time (HH:MM)", btn.dataset.time || "09:00");
+              if (!time) return;
+              patch = { status: "confirmed", date, time };
+            } else if (action === "reassign") {
+              const pool = document.getElementById("reassignDoctorPool");
+              const options = [...(pool?.options || [])].map((o) => `${o.value}|${o.textContent}`);
+              const pick = window.prompt(
+                "Reassign to doctor id (copy from list):\n" + options.map((o) => o.replace("|", " — ")).join("\n"),
+                btn.dataset.doctor || "",
+              );
+              if (!pick) return;
+              const doctorId = pick.split("|")[0].trim() || pick.trim();
+              const opt = [...(pool?.options || [])].find((o) => o.value === doctorId);
+              if (!opt) return showToast("Unknown doctor id.");
+              if (!window.confirm(`Reassign visit to ${opt.textContent}?`)) return;
+              patch = { doctorId, dept: opt.dataset.dept || undefined };
+            }
+            if (!patch) return;
+            btn.disabled = true;
+            try {
+              await Auth.updateAppointmentStatus(id, patch);
+              const msg = {
+                confirm: "Appointment confirmed.",
+                cancel: "Appointment declined / cancelled.",
+                complete: "Visit marked completed.",
+                no_show: "Marked as no-show.",
+                reschedule: "Visit rescheduled and confirmed.",
+                reassign: "Appointment reassigned.",
+              }[action] || "Appointment updated.";
+              showToast(msg);
+              render();
+            } catch (err) {
+              showToast(err.message || "Could not update appointment.");
+              btn.disabled = false;
+            }
+          });
+        });
+        viewRoot.querySelectorAll("[data-staff-action]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const action = btn.dataset.staffAction;
+            const name = btn.dataset.name || "this account";
+            const next = action === "deactivate" ? "inactive" : "active";
+            if (action === "deactivate" && !window.confirm(`Deactivate ${name}? History stays; they cannot sign in for clinical work until reactivated.`)) return;
+            if (action === "reactivate" && !window.confirm(`Reactivate ${name}?`)) return;
+            btn.disabled = true;
+            try {
+              await Auth.updateStaff(btn.dataset.id, { status: next });
+              showToast(action === "deactivate" ? `${name} deactivated.` : `${name} reactivated.`);
+              render();
+            } catch (err) {
+              showToast(err.message || "Could not update staff.");
+              btn.disabled = false;
+            }
+          });
+        });
+        const cleanup = document.getElementById("cleanupDupes");
+        if (cleanup) {
+          cleanup.addEventListener("click", async () => {
+            if (!window.confirm("Cancel duplicate appointment requests, keeping the oldest in each group? This is audited.")) return;
+            cleanup.disabled = true;
+            try {
+              const res = await Auth.cleanupDuplicateAppointments();
+              showToast(`Cleaned up ${res.data.cancelled} duplicate(s).`);
+              render();
+            } catch (err) {
+              showToast(err.message || "Could not clean duplicates.");
+              cleanup.disabled = false;
+            }
+          });
+        }
+        viewRoot.querySelectorAll("[data-ex-action]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            btn.disabled = true;
+            try {
+              await Auth.respondToExchange(btn.dataset.id, btn.dataset.exAction);
+              showToast(btn.dataset.exAction === "denied" ? "Swap declined." : "Swap accepted · waiting on admin.");
+              render();
+            } catch (err) {
+              showToast(err.message || "Could not update swap.");
+              btn.disabled = false;
+            }
+          });
+        });
         const appr = document.getElementById("approveAll");
         if (appr) {
           appr.addEventListener("click", async () => {
+            if (!window.confirm("Approve all pending shift swaps? This cannot be undone from this screen.")) return;
             appr.disabled = true;
             try {
               const res = await Auth.approvePendingExchanges();
@@ -560,6 +879,7 @@
         const pub = document.getElementById("publishDrafts");
         if (pub) {
           pub.addEventListener("click", async () => {
+            if (!window.confirm("Publish all draft shifts to the live roster? Staff will see these immediately.")) return;
             pub.disabled = true;
             try {
               const res = await Auth.publishDraftShifts();
@@ -575,8 +895,9 @@
         const swap = document.getElementById("requestSwap");
         if (swap) {
           swap.addEventListener("click", async () => {
-            const peer = swap.dataset.peer;
-            if (!peer) return showToast("No peer staff available.");
+            const peerEl = document.getElementById("swapPeer");
+            const peer = peerEl?.value || swap.dataset.peer;
+            if (!peer) return showToast("Select a same-department colleague first.");
             swap.disabled = true;
             try {
               const date = new Date();

@@ -259,7 +259,7 @@
     "role.doctor.greeting": "Clinical workspace",
     "role.nurse.greeting": "Ward care workspace",
     "role.patient.greeting": "Personal care portal",
-    "role.admin.blurb": "Manage staff, publish duty schedules, approve exchanges, and monitor hospital-wide activity.",
+    "role.admin.blurb": "Set up users and roles, publish rosters, oversee appointments, and keep the system safe — not clinical charting.",
     "role.doctor.blurb": "Review your roster, assigned patients, today’s visits, and shift-swap requests.",
     "role.nurse.blurb": "Track ward patients, clinic lists, nursing shifts, and handoff notes.",
     "role.patient.blurb": "View upcoming visits, request appointments, and find doctors on duty.",
@@ -867,7 +867,13 @@
     if (document.getElementById("filfilu-i18n-styles")) return;
     const style = document.createElement("style");
     style.id = "filfilu-i18n-styles";
-    style.textContent = ".lang-switch{display:inline-flex;align-items:center;gap:.45rem;font-size:.78rem;font-weight:700;color:var(--muted,#4F6280)}.lang-switch select{appearance:none;border:1px solid var(--line,#E3EBF5);background:var(--glass,#fff);color:var(--navy,#0B2447);border-radius:999px;padding:.4rem .85rem;font:inherit;font-weight:700;cursor:pointer;min-width:7.2rem}.lang-switch.compact .lang-switch-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.panel-top .lang-switch,.header-actions .lang-switch,.top-actions .lang-switch{margin-right:.25rem}";
+    style.textContent = [
+      ".lang-switch{display:inline-flex;align-items:center;gap:.45rem;font-size:.78rem;font-weight:700;color:var(--muted,#4F6280)}",
+      ".lang-switch select{appearance:none;border:1px solid var(--line,#E3EBF5);background:var(--panel,#FFFFFF);color:var(--navy,#0B2447);border-radius:999px;padding:.4rem .85rem;font:inherit;font-weight:700;cursor:pointer;min-width:7.2rem}",
+      ".lang-switch select option{background:var(--panel,#FFFFFF);color:var(--navy,#0B2447)}",
+      ".lang-switch.compact .lang-switch-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}",
+      ".panel-top .lang-switch,.header-actions .lang-switch,.top-actions .lang-switch{margin-right:.25rem}",
+    ].join("");
     document.head.appendChild(style);
   }
   document.documentElement.lang = getLang();

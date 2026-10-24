@@ -14,7 +14,7 @@
       short: "Admin",
       accent: "#1D6FE0",
       greeting: "Hospital operations command center",
-      blurb: "Manage staff, publish duty schedules, approve exchanges, and monitor hospital-wide activity.",
+      blurb: "Set up users and roles, publish rosters, oversee appointments, and keep the system safe — not clinical charting.",
     },
     doctor: {
       label: "Doctor",
@@ -409,13 +409,52 @@
     return body;
   }
 
-  async function updateAppointmentStatus(id, status) {
+  async function updateAppointmentStatus(id, patch) {
+    const payload = typeof patch === "string" ? { status: patch } : patch;
     const body = await api(`/appointments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  async function respondToExchange(id, status) {
+    const body = await api(`/exchanges/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
     });
     await hydrateFromApi(readSession());
     return body;
+  }
+
+  async function updateStaff(id, patch) {
+    const body = await api(`/staff/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  async function cleanupDuplicateAppointments() {
+    const body = await api("/appointments/cleanup-duplicates", {
+      method: "POST",
+      body: "{}",
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  function findDuplicateAppointmentGroups(session) {
+    const rows = rls.appointments(session).filter((a) => a.status === "requested" || a.status === "confirmed");
+    const groups = new Map();
+    for (const a of rows) {
+      const key = [a.patientId, a.doctorId, a.date, a.time, a.reason || "", a.status].join("|");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(a);
+    }
+    return [...groups.values()].filter((g) => g.length > 1);
   }
 
   function loginLocal({ email, password, role }) {
@@ -618,7 +657,10 @@
     },
     shifts(session) {
       if (can(session, "schedule:read") || can(session, "schedule:write")) return DB.shifts;
-      if (can(session, "schedule:read_own")) return DB.shifts.filter((s) => s.staffId === session.staffId);
+      if (can(session, "schedule:read_own")) {
+        // Own roster only — drafts stay hidden until published.
+        return DB.shifts.filter((s) => s.staffId === session.staffId && s.status === "published");
+      }
       return [];
     },
     staff(session) {
@@ -749,6 +791,10 @@
     publishDraftShifts,
     requestExchange,
     updateAppointmentStatus,
+    respondToExchange,
+    updateStaff,
+    cleanupDuplicateAppointments,
+    findDuplicateAppointmentGroups,
     logout,
     session: readSession,
     requireAuth,
