@@ -26,11 +26,32 @@ export function googleConfigured() {
 }
 
 export function createGoogleClient() {
-  return new OAuth2Client(
+  const client = new OAuth2Client(
     requireEnv("GOOGLE_CLIENT_ID"),
     requireEnv("GOOGLE_CLIENT_SECRET"),
     requireEnv("GOOGLE_REDIRECT_URI"),
   );
+  // Windows/dev clocks are often skewed; Google rejects ID tokens when local time
+  // is past `exp` ("Token used too late"). Allow a generous skew for local demos.
+  const skew = Number(process.env.GOOGLE_CLOCK_TOLERANCE_SEC || 86400);
+  client.clockTolerance = Number.isFinite(skew) && skew >= 0 ? skew : 86400;
+  return client;
+}
+
+/** User-facing Google auth errors (never dump JWT payloads into the UI). */
+export function friendlyGoogleError(err: unknown): string {
+  const message = err instanceof Error ? err.message : "Google sign-in failed.";
+  if (/Token used too (late|early)/i.test(message)) {
+    return "Your computer’s date & time is out of sync with Google. In Windows: Settings → Time & language → Date & time → turn on “Set time automatically”, then try Sign in with Google again.";
+  }
+  if (/No Filfilu account found/i.test(message)) {
+    return message;
+  }
+  if (/Wrong recipient|audience|invalid token|jwt/i.test(message) || message.includes("{")) {
+    return "Google sign-in failed. Please try again.";
+  }
+  if (message.length > 180) return "Google sign-in failed. Please try again.";
+  return message;
 }
 
 export function buildGoogleAuthUrl(state: string) {

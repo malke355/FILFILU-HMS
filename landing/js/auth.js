@@ -289,8 +289,17 @@
     }
   }
 
-  function beginGoogleSignIn() {
-    location.href = `${API_BASE}/auth/google`;
+  /**
+   * Start Google OAuth.
+   * @param {{ intent?: "login"|"signup", role?: string }} [opts]
+   * - login: only existing Filfilu accounts
+   * - signup: create account for new Google email (role defaults to patient)
+   */
+  function beginGoogleSignIn(opts = {}) {
+    const intent = opts.intent === "signup" ? "signup" : "login";
+    const params = new URLSearchParams({ intent });
+    if (intent === "signup" && opts.role) params.set("role", opts.role);
+    location.href = `${API_BASE}/auth/google?${params}`;
   }
 
   async function logout() {

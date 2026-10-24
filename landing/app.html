@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="js/i18n.js"></script>
   <script src="js/auth.js"></script>
   <style>
     :root {
@@ -218,10 +219,10 @@
     <aside class="sidebar">
       <a class="brand" href="index.html" aria-label="Filfilu home">
         <span class="brand-mark" aria-hidden="true">+</span>
-        <span><strong>FILFILU</strong><small>WORKSPACE</small></span>
+        <span><strong>FILFILU</strong><small data-i18n="brand.workspace">WORKSPACE</small></span>
       </a>
       <div class="role-card">
-        <div class="eyebrow" id="roleEyebrow">Role</div>
+        <div class="eyebrow" id="roleEyebrow" data-i18n="app.roleEyebrow">Assigned role</div>
         <strong id="roleLabel">—</strong>
         <p id="roleBlurb">—</p>
       </div>
@@ -234,7 +235,7 @@
             <span id="userEmail">—</span>
           </div>
         </div>
-        <button class="ghost" type="button" id="logoutBtn">Sign out</button>
+        <button class="ghost" type="button" id="logoutBtn" data-i18n="app.signOut">Sign out</button>
       </div>
     </aside>
 
@@ -245,8 +246,9 @@
           <p id="viewSub">Role-scoped workspace</p>
         </div>
         <div class="top-actions">
-          <input class="search" id="search" type="search" placeholder="Filter records…" aria-label="Filter records" />
-          <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle dark mode">
+          <span id="langMount"></span>
+          <input class="search" id="search" type="search" data-i18n-placeholder="app.filter" data-i18n-aria="app.filter" placeholder="Filter records…" aria-label="Filter records" />
+          <button class="icon-btn" id="themeBtn" type="button" data-i18n-aria="common.theme" aria-label="Toggle dark mode">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg>
           </button>
         </div>
@@ -259,11 +261,14 @@
   <script>
     (async () => {
       const Auth = window.FilfiluAuth;
+      const I18n = window.FilfiluI18n;
+      const t = (k, v) => I18n.t(k, v);
       const session = await Auth.bootWorkspace();
       if (!session) return;
 
+      I18n.mountSwitcher(document.getElementById("langMount"), { compact: true });
+
       document.documentElement.style.setProperty("--accent", session.meta.accent);
-      document.title = `${session.meta.short} · Filfilu Workspace`;
 
       const root = document.documentElement;
       document.getElementById("themeBtn").addEventListener("click", () => {
@@ -272,9 +277,16 @@
         root.setAttribute("data-theme", dark ? "light" : "dark");
       });
 
-      document.getElementById("roleEyebrow").textContent = "Assigned role";
-      document.getElementById("roleLabel").textContent = session.meta.label;
-      document.getElementById("roleBlurb").textContent = session.title + (session.dept ? ` · ${session.dept}` : session.ward ? ` · ${session.ward}` : "");
+      function paintRoleChrome() {
+        const roleLabel = t(`role.${session.role}.short`) !== `role.${session.role}.short`
+          ? t(`role.${session.role}.short`)
+          : session.meta.label;
+        document.title = `${roleLabel} · Filfilu Workspace`;
+        document.getElementById("roleEyebrow").textContent = t("app.roleEyebrow");
+        document.getElementById("roleLabel").textContent = roleLabel;
+        document.getElementById("roleBlurb").textContent = session.title + (session.dept ? ` · ${session.dept}` : session.ward ? ` · ${session.ward}` : "");
+      }
+      paintRoleChrome();
       document.getElementById("userName").textContent = session.name;
       document.getElementById("userEmail").textContent = session.email;
       document.getElementById("userAvatar").textContent = Auth.initials(session.name);
@@ -298,19 +310,11 @@
         user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/></svg>',
       };
 
-      const titles = {
-        overview: ["Overview", "Personalized for your assigned role"],
-        staff: ["Staff & roles", "Admin RBAC directory"],
-        schedule: ["Duty schedule", "Roster rows visible under your policy"],
-        appointments: ["Appointments", "RLS-filtered visit list"],
-        exchanges: ["Approvals & swaps", "Exchange workflow for your role"],
-        reports: ["Analytics", "Hospital-wide aggregates"],
-        patients: ["My patients", "Assigned patient panel"],
-        ward: ["Ward board", "Patients on your ward only"],
-        doctors: ["Find a doctor", "Published public directory"],
-        availability: ["Doctor schedules", "Availability across every specialty"],
-        notifications: ["Alerts", "Role inbox"],
-        profile: ["My profile", "Your patient record"],
+      const titlePair = (id) => [t(`view.${id}`), t(`view.${id}Sub`)];
+      const navLabel = (id) => {
+        const key = `nav.${session.role}.${id}`;
+        const translated = t(key);
+        return translated === key ? (items.find((i) => i.id === id)?.label || id) : translated;
       };
 
       const navEl = document.getElementById("nav");
@@ -366,31 +370,33 @@
         const activity = Auth.rls.activity(session).slice(0, 5).map((a) =>
           `<div class="list-item"><span class="dot"></span><div><strong>${a.text}</strong><p>Recent activity</p></div><time>${a.time}</time></div>`).join("");
 
+        const greeting = t(`role.${session.role}.greeting`);
+        const blurb = t(`role.${session.role}.blurb`);
         return `
           <section class="hero">
-            <div class="kicker">${session.meta.greeting}</div>
-            <h2>Welcome back, ${session.name.split(" ")[0]}.</h2>
-            <p>${session.meta.blurb}</p>
+            <div class="kicker">${greeting === `role.${session.role}.greeting` ? session.meta.greeting : greeting}</div>
+            <h2>${t("app.welcomeBack", { name: session.name.split(" ")[0] })}</h2>
+            <p>${blurb === `role.${session.role}.blurb` ? session.meta.blurb : blurb}</p>
             <div class="hero-meta">
               <span class="chip">Role · ${session.meta.label}</span>
               <span class="chip">${session.dept || session.ward || "Filfilu HMS"}</span>
               <span class="chip">${session.permissions.length} permissions</span>
-              <span class="chip">Live API</span>
+              <span class="chip">${t("app.liveApi")}</span>
             </div>
           </section>
           <div class="stats">${stats}</div>
           <div class="panel" style="margin-bottom:1rem">
-            <div class="panel-h"><h3>Quick actions</h3><span>Role-aware shortcuts</span></div>
+            <div class="panel-h"><h3>${t("app.quickActions")}</h3><span>${t("app.roleShortcuts")}</span></div>
             <div class="actions">${actions}</div>
           </div>
           <div class="grid-2">
-            <div class="panel"><div class="panel-h"><h3>Alerts</h3><span>${Auth.rls.notifications(session).length} items</span></div><div class="list">${notes || '<div class="empty">No alerts</div>'}</div></div>
-            <div class="panel"><div class="panel-h"><h3>Activity</h3><span>Latest</span></div><div class="list">${activity || '<div class="empty">No activity</div>'}</div></div>
+            <div class="panel"><div class="panel-h"><h3>${t("app.alerts")}</h3><span>${Auth.rls.notifications(session).length} items</span></div><div class="list">${notes || `<div class="empty">${t("app.noAlerts")}</div>`}</div></div>
+            <div class="panel"><div class="panel-h"><h3>${t("app.activity")}</h3><span>${t("app.latest")}</span></div><div class="list">${activity || `<div class="empty">${t("app.noActivity")}</div>`}</div></div>
           </div>`;
       }
 
       function render() {
-        const [title, sub] = titles[current] || ["Workspace", ""];
+        const [title, sub] = titlePair(current);
         document.getElementById("viewTitle").textContent = title;
         document.getElementById("viewSub").textContent = sub;
         [...navEl.children].forEach((b) => b.classList.toggle("active", b.dataset.id === current));
@@ -588,22 +594,34 @@
         }
       }
 
-      items.forEach((item) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.dataset.id = item.id;
-        btn.innerHTML = `${ICONS[item.icon] || ICONS.grid}<span>${item.label}</span>`;
-        btn.addEventListener("click", () => { current = item.id; render(); });
-        navEl.appendChild(btn);
-      });
+      function paintNav() {
+        navEl.innerHTML = "";
+        items.forEach((item) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.dataset.id = item.id;
+          btn.classList.toggle("active", item.id === current);
+          btn.innerHTML = `${ICONS[item.icon] || ICONS.grid}<span>${navLabel(item.id)}</span>`;
+          btn.addEventListener("click", () => { current = item.id; paintNav(); render(); });
+          navEl.appendChild(btn);
+        });
+      }
+      paintNav();
 
       searchEl.addEventListener("input", () => {
         query = searchEl.value.trim().toLowerCase();
         render();
       });
 
+      window.addEventListener("filfilu:langchange", () => {
+        paintRoleChrome();
+        paintNav();
+        I18n.apply(document);
+        render();
+      });
+
       render();
-      showToast(`${session.meta.label} · connected to API`);
+      showToast(t("app.connected", { label: session.meta.label }));
     })();
   </script>
 </body>

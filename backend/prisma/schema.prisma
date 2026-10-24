@@ -3,11 +3,11 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// SQLite: store role/status as strings (admin|doctor|nurse|patient, etc.)
+// Roles/status stored as strings (admin|doctor|nurse|patient, etc.)
 
 model User {
   id            String   @id @default(cuid())
