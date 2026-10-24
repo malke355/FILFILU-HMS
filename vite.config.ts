@@ -7,7 +7,11 @@ import { defineConfig } from 'vite'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
+// GitHub project Pages: https://malke355.github.io/FILFILU-HMS/
+const isGitHubPages = process.env.GITHUB_PAGES === 'true'
+
 export default defineConfig({
+  base: isGitHubPages ? '/FILFILU-HMS/' : '/',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

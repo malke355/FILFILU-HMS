@@ -24,9 +24,9 @@ import {
 export function AppRouter() {
   return (
     <Routes>
+      <Route path="login" element={<LoginPage />} />
       <Route element={<AppShell />}>
         <Route index element={<HomePage />} />
-        <Route path="login" element={<LoginPage />} />
         <Route path="doctors" element={<FindDoctorsPage />} />
         <Route path="doctors/on-duty" element={<OnDutyPage />} />
         <Route path="doctors/:id" element={<DoctorProfilePage />} />

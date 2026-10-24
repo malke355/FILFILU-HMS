@@ -16,7 +16,7 @@ export function NotificationsPage() {
     return (
       <EmptyState
         title="Sign in to view notifications"
-        description="Use the demo banner or login page to choose a role."
+        description="Sign in to see your notifications."
       />
     )
   }

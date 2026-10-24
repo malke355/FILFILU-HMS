@@ -37,6 +37,7 @@ export function SchedulePage() {
   const [open, setOpen] = useState(false)
   const [warnings, setWarnings] = useState<ConflictWarning[]>([])
   const [statusFilter, setStatusFilter] = useState<'all' | ScheduleStatus>('all')
+  const [deptFilter, setDeptFilter] = useState('all')
 
   const staff = staffService.list().filter((s) => s.active && s.role !== 'admin')
   const departments = departmentService.list()
@@ -65,6 +66,7 @@ export function SchedulePage() {
     assignments.filter((a) => {
       if (a.date !== date) return false
       if (statusFilter !== 'all' && a.status !== statusFilter) return false
+      if (deptFilter !== 'all' && a.departmentId !== deptFilter) return false
       return true
     })
 
@@ -113,6 +115,21 @@ export function SchedulePage() {
           <option value="all">All statuses</option>
           <option value="draft">Draft</option>
           <option value="published">Published</option>
+        </Select>
+        <Select
+          className="w-auto"
+          value={deptFilter}
+          onChange={(e) => setDeptFilter(e.target.value)}
+          aria-label="Department filter"
+        >
+          <option value="all">All departments</option>
+          {departments
+            .filter((d) => d.active)
+            .map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
         </Select>
         <div className="ml-auto flex gap-2">
           <Button
@@ -175,14 +192,20 @@ export function SchedulePage() {
                   +
                 </Button>
               </div>
-              <ul className="space-y-2">
+              <ul
+                className={
+                  view === 'month'
+                    ? 'space-y-2'
+                    : 'grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+                }
+              >
                 {items.map((a) => {
                   const member = staffService.getById(a.staffId)
                   const shift = shifts.find((s) => s.id === a.shiftTypeId)
                   return (
                     <li
                       key={a.id}
-                      className="rounded-xl border border-navy-900/8 bg-white/80 p-2 text-xs"
+                      className="rounded-xl border border-navy-900/8 bg-surface p-2 text-xs"
                       style={{ borderLeftWidth: 3, borderLeftColor: shift?.color ?? '#0D9488' }}
                     >
                       <p className="font-semibold">

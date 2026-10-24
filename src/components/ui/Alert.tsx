@@ -2,10 +2,11 @@ import { cn } from '@/lib/cn'
 import { AlertTriangle, Info, CheckCircle2 } from 'lucide-react'
 
 const styles = {
-  info: 'border-teal-600/25 bg-teal-50 text-navy-900',
-  warn: 'border-amber-500/30 bg-amber-50 text-amber-950',
-  danger: 'border-red-500/30 bg-red-50 text-red-950',
-  success: 'border-emerald-500/30 bg-emerald-50 text-emerald-950',
+  info: 'border-teal-600/20 bg-teal-50 text-navy-900',
+  warn: 'border-amber-500/25 bg-amber-50 text-amber-950 dark:bg-amber-500/8 dark:text-amber-200',
+  danger: 'border-red-500/25 bg-red-50 text-red-950 dark:bg-red-500/8 dark:text-red-200',
+  success:
+    'border-emerald-500/25 bg-emerald-50 text-emerald-950 dark:bg-emerald-500/8 dark:text-emerald-200',
 } as const
 
 const icons = {

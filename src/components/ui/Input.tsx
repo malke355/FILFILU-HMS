@@ -6,39 +6,22 @@ import type {
   TextareaHTMLAttributes,
 } from 'react'
 
+const fieldBase =
+  'w-full rounded-xl border border-navy-900/12 bg-surface px-3.5 py-2.5 text-sm text-navy-900 transition focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/15'
+
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      className={cn(
-        'w-full rounded-xl border border-navy-900/12 bg-white px-3 py-2 text-sm text-navy-900 placeholder:text-ink-500/70 focus:border-teal-600',
-        className,
-      )}
-      {...props}
-    />
-  )
+  return <input className={cn(fieldBase, 'placeholder:text-ink-500/70', className)} {...props} />
 }
 
 export function TextArea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
-    <textarea
-      className={cn(
-        'w-full rounded-xl border border-navy-900/12 bg-white px-3 py-2 text-sm text-navy-900 placeholder:text-ink-500/70 focus:border-teal-600',
-        className,
-      )}
-      {...props}
-    />
+    <textarea className={cn(fieldBase, 'placeholder:text-ink-500/70', className)} {...props} />
   )
 }
 
 export function Select({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select
-      className={cn(
-        'w-full rounded-xl border border-navy-900/12 bg-white px-3 py-2 text-sm text-navy-900 focus:border-teal-600',
-        className,
-      )}
-      {...props}
-    >
+    <select className={cn(fieldBase, className)} {...props}>
       {children}
     </select>
   )
@@ -54,7 +37,10 @@ export function Label({
   htmlFor?: string
 }) {
   return (
-    <label htmlFor={htmlFor} className={cn('mb-1 block text-sm font-medium text-navy-800', className)}>
+    <label
+      htmlFor={htmlFor}
+      className={cn('mb-1.5 block text-sm font-semibold text-navy-800', className)}
+    >
       {children}
     </label>
   )
