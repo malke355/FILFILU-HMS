@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Login — FILFILU Hospital</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231D6FE0'/%3E%3Cpath d='M16 8v16M8 16h16' stroke='%23fff' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #FFFFFF; --navy: #0B2447; --blue: #1D6FE0; --blue-dark: #1558B8;
+      --teal: #1BB6A8; --muted: #4F6280; --line: #E3EBF5; --soft: #EEF5FF;
+      --grad: linear-gradient(135deg, var(--blue), var(--teal));
+      --glass: rgba(255,255,255,.72); --glass-border: rgba(255,255,255,.7);
+      --shadow: 0 30px 80px rgba(11,36,71,.14); --ease: cubic-bezier(.2,.8,.2,1);
+      --panel: linear-gradient(155deg, #0B2447 0%, #1558B8 55%, #1BB6A8 120%);
+    }
+    @media (prefers-color-scheme: dark) {
+      html:not([data-theme="light"]) {
+        --bg: #070F1F; --navy: #EAF1FF; --blue: #4C93F5; --blue-dark: #1558B8;
+        --teal: #3DD1C2; --muted: #9BB0D0; --line: #1C2B45; --soft: #122038;
+        --glass: rgba(12,22,42,.72); --glass-border: rgba(255,255,255,.12);
+        --shadow: 0 30px 80px rgba(0,0,0,.45);
+      }
+    }
+    html[data-theme="dark"] {
+      --bg: #070F1F; --navy: #EAF1FF; --blue: #4C93F5; --blue-dark: #1558B8;
+      --teal: #3DD1C2; --muted: #9BB0D0; --line: #1C2B45; --soft: #122038;
+      --glass: rgba(12,22,42,.72); --glass-border: rgba(255,255,255,.12);
+      --shadow: 0 30px 80px rgba(0,0,0,.45);
+    }
+    html[data-theme="light"] {
+      --bg: #FFFFFF; --navy: #0B2447; --blue: #1D6FE0; --blue-dark: #1558B8;
+      --teal: #1BB6A8; --muted: #4F6280; --line: #E3EBF5; --soft: #EEF5FF;
+      --glass: rgba(255,255,255,.72); --glass-border: rgba(255,255,255,.7);
+      --shadow: 0 30px 80px rgba(11,36,71,.14);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      background: var(--bg); color: var(--navy); min-height: 100vh;
+      position: relative; overflow-x: hidden;
+    }
+    :focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+    a { color: var(--blue); text-decoration: none; font-weight: 700; }
+    a:hover { text-decoration: underline; }
+    button, input { font: inherit; }
+    .blob {
+      position: fixed; border-radius: 50%; filter: blur(90px); pointer-events: none; z-index: 0;
+      animation: drift 16s ease-in-out infinite alternate;
+    }
+    .blob-a { width: 380px; height: 380px; top: -100px; left: -80px; background: color-mix(in srgb, var(--blue) 24%, transparent); }
+    .blob-b { width: 420px; height: 420px; right: -90px; bottom: -120px; background: color-mix(in srgb, var(--teal) 22%, transparent); animation-delay: -5s; }
+    @keyframes drift { to { transform: translate(36px, 28px) scale(1.06); } }
+
+    .auth-shell {
+      position: relative; z-index: 1; min-height: 100vh;
+      display: grid; grid-template-columns: 1.05fr 1fr;
+    }
+    .auth-visual {
+      position: relative; padding: clamp(1.5rem, 4vw, 3rem);
+      background: var(--panel); color: #fff; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .auth-visual::before {
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255,255,255,.18), transparent 40%),
+        radial-gradient(circle at 80% 70%, rgba(27,182,168,.35), transparent 45%);
+    }
+    .auth-visual .brand { position: relative; z-index: 1; display: flex; align-items: center; gap: .75rem; color: #fff; text-decoration: none; }
+    .brand-mark {
+      width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,.18);
+      border: 1px solid rgba(255,255,255,.28); display: grid; place-items: center;
+      font-size: 1.4rem; font-weight: 800; backdrop-filter: blur(8px);
+    }
+    .brand-text { display: flex; flex-direction: column; line-height: 1.05; }
+    .brand-text strong { font-size: 1.05rem; font-weight: 800; }
+    .brand-text span { font-size: .62rem; font-weight: 700; letter-spacing: .22em; opacity: .8; }
+
+    .visual-copy { position: relative; z-index: 1; margin: auto 0; max-width: 28rem; padding: 2rem 0; }
+    .visual-copy h1 {
+      margin: 0 0 1rem; font-size: clamp(2.4rem, 4.5vw, 3.6rem); font-weight: 800;
+      letter-spacing: -.03em; line-height: 1.05;
+    }
+    .visual-copy h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, #fff, #9aefe6);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .visual-copy p { margin: 0; font-size: 1.05rem; line-height: 1.65; color: rgba(255,255,255,.84); max-width: 34ch; }
+    .visual-stats {
+      position: relative; z-index: 1; display: flex; gap: 1.5rem; flex-wrap: wrap;
+      margin-top: auto; padding-top: 2rem;
+    }
+    .visual-stats div { min-width: 6rem; }
+    .visual-stats strong { display: block; font-size: 1.5rem; font-weight: 800; }
+    .visual-stats span { font-size: .8rem; opacity: .75; font-weight: 600; }
+
+    .auth-panel {
+      display: flex; flex-direction: column; padding: clamp(1.25rem, 3vw, 2.5rem);
+      position: relative;
+    }
+    .panel-top {
+      display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1rem;
+    }
+    .panel-top-right { display: flex; align-items: center; gap: .55rem; }
+    .back-link {
+      display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-weight: 600; font-size: .9rem;
+    }
+    .back-link:hover { color: var(--navy); text-decoration: none; }
+    .icon-btn {
+      width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line);
+      background: var(--bg); color: var(--navy); display: grid; place-items: center; cursor: pointer;
+    }
+
+    .auth-card {
+      width: min(420px, 100%); margin: auto; padding: clamp(1.5rem, 3vw, 2.25rem);
+      border-radius: 28px; background: var(--glass); border: 1px solid var(--line);
+      box-shadow: var(--shadow); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      animation: rise .7s var(--ease) both;
+    }
+    @keyframes rise { from { opacity: 0; transform: translateY(22px); } }
+    .auth-card .mini-brand { display: flex; align-items: center; gap: .65rem; margin-bottom: 1.25rem; color: var(--navy); text-decoration: none; }
+    .auth-card .mini-brand .brand-mark {
+      width: 38px; height: 38px; background: var(--grad); border: none; color: #fff;
+      box-shadow: 0 10px 22px color-mix(in srgb, var(--blue) 30%, transparent);
+    }
+    .auth-card h1 { margin: 0 0 .35rem; font-size: clamp(1.8rem, 3vw, 2.2rem); font-weight: 800; letter-spacing: -.03em; }
+    .auth-card .sub { margin: 0 0 1.4rem; color: var(--muted); font-size: .92rem; }
+
+    .field { display: grid; gap: .4rem; margin-bottom: .95rem; }
+    .field label { font-size: .82rem; font-weight: 700; color: var(--navy); }
+    .input-wrap {
+      display: flex; align-items: center; gap: .55rem; padding: .85rem 1rem;
+      border: 1px solid var(--line); border-radius: 14px; background: transparent;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .input-wrap:focus-within {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 18%, transparent);
+    }
+    .input-wrap svg { flex-shrink: 0; color: var(--muted); }
+    .input-wrap input,
+    .input-wrap select {
+      border: 0; outline: none; width: 100%; background: transparent; color: var(--navy); font-size: .92rem;
+    }
+    .input-wrap input:-webkit-autofill,
+    .input-wrap input:-webkit-autofill:hover,
+    .input-wrap input:-webkit-autofill:focus {
+      -webkit-text-fill-color: var(--navy);
+      transition: background-color 99999s ease-out;
+      box-shadow: 0 0 0 1000px transparent inset;
+    }
+    .toggle-pw {
+      border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; display: grid; place-items: center;
+    }
+    .row-between {
+      display: flex; justify-content: space-between; align-items: center; gap: .75rem;
+      margin: .2rem 0 1.1rem; font-size: .82rem;
+    }
+    .check { display: inline-flex; align-items: center; gap: .45rem; color: var(--muted); font-weight: 600; cursor: pointer; }
+    .check input { accent-color: var(--blue); width: 15px; height: 15px; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: .45rem;
+      width: 100%; border: 0; border-radius: 999px; padding: .95rem 1.25rem;
+      font-weight: 800; font-size: .98rem; cursor: pointer; color: #fff;
+      background: var(--grad); position: relative; overflow: hidden;
+      box-shadow: 0 14px 34px color-mix(in srgb, var(--blue) 32%, transparent);
+      transition: transform .2s var(--ease), filter .2s;
+    }
+    .btn:hover { filter: brightness(1.05); }
+    .btn::after {
+      content: ""; position: absolute; inset: 0; transform: translateX(-120%) skewX(-18deg);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+      animation: sheen 4.5s ease-in-out infinite; pointer-events: none;
+    }
+    .btn:disabled { opacity: .7; cursor: wait; }
+    @keyframes sheen { 0%, 60% { transform: translateX(-120%) skewX(-18deg); } 85%, 100% { transform: translateX(120%) skewX(-18deg); } }
+
+    .divider {
+      display: flex; align-items: center; gap: .75rem; margin: 1.15rem 0;
+      color: var(--muted); font-size: .75rem; font-weight: 700; letter-spacing: .08em;
+    }
+    .divider::before, .divider::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+
+    .social { display: grid; gap: .6rem; }
+    .social button {
+      display: inline-flex; align-items: center; justify-content: center; gap: .55rem;
+      width: 100%; border-radius: 999px; padding: .8rem 1rem; font-weight: 700; font-size: .88rem;
+      border: 1px solid var(--line); background: var(--bg); color: var(--navy); cursor: pointer;
+      transition: background .2s, border-color .2s;
+    }
+    .social button:hover { background: var(--soft); border-color: color-mix(in srgb, var(--blue) 30%, var(--line)); }
+
+    .footer-note { margin: 1.25rem 0 0; text-align: center; color: var(--muted); font-size: .88rem; font-weight: 500; }
+    .msg {
+      display: none; margin-bottom: 1rem; padding: .75rem .9rem; border-radius: 12px;
+      background: color-mix(in srgb, var(--teal) 14%, var(--bg)); color: var(--navy);
+      font-size: .86rem; font-weight: 600; border: 1px solid color-mix(in srgb, var(--teal) 35%, var(--line));
+    }
+    .msg.show { display: block; animation: rise .4s var(--ease); }
+
+    @media (max-width: 900px) {
+      .auth-shell { grid-template-columns: 1fr; }
+      .auth-visual { min-height: 220px; padding-bottom: 1.5rem; }
+      .visual-copy { padding: 1rem 0 .5rem; }
+      .visual-copy h1 { font-size: clamp(1.8rem, 7vw, 2.4rem); }
+      .visual-stats { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+      .blob { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="blob blob-a" aria-hidden="true"></div>
+  <div class="blob blob-b" aria-hidden="true"></div>
+
+  <main class="auth-shell">
+    <aside class="auth-visual" aria-label="Filfilu brand panel">
+      <a class="brand" href="index.html" aria-label="Filfilu Hospital home">
+        <span class="brand-mark" aria-hidden="true">+</span>
+        <span class="brand-text"><strong>FILFILU</strong><span data-i18n="brand.hospital">HOSPITAL</span></span>
+      </a>
+      <div class="visual-copy">
+        <h1><span data-i18n="login.visualTitleBefore">Welcome back to </span><em data-i18n="login.visualTitleEm">better care</em><span data-i18n="login.visualTitleAfter">.</span></h1>
+        <p data-i18n="login.visualBody">Sign in to manage appointments, records, and your Filfilu care journey — securely in one place.</p>
+      </div>
+      <div class="visual-stats" aria-hidden="true">
+        <div><strong>24/7</strong><span data-i18n="login.statCare">Care access</span></div>
+        <div><strong>50+</strong><span data-i18n="login.statSpecialists">Specialists</span></div>
+        <div><strong>99%</strong><span data-i18n="login.statTrust">Patient trust</span></div>
+      </div>
+    </aside>
+
+    <section class="auth-panel">
+      <div class="panel-top">
+        <a class="back-link" href="index.html" data-i18n="common.backHome">← Back to home</a>
+        <div class="panel-top-right">
+          <span id="langMount"></span>
+          <button class="icon-btn" id="themeBtn" type="button" data-i18n-aria="common.theme" aria-label="Toggle dark mode">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="auth-card">
+        <a class="mini-brand" href="index.html" aria-label="Filfilu Hospital">
+          <span class="brand-mark" aria-hidden="true">+</span>
+          <span class="brand-text"><strong>FILFILU</strong><span data-i18n="brand.hospital">HOSPITAL</span></span>
+        </a>
+        <h1 data-i18n="login.title">Welcome Back</h1>
+        <p class="sub" data-i18n="login.subHtml">Sign in to manage appointments, records, and your care journey.</p>
+
+        <div class="msg" id="msg" role="status"></div>
+
+        <form id="loginForm" novalidate>
+          <div class="field">
+            <label for="email" data-i18n="login.email">E-mail</label>
+            <div class="input-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+              <input id="email" name="email" type="email" autocomplete="username" required />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="password" data-i18n="login.password">Password</label>
+            <div class="input-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+              <input id="password" name="password" type="password" autocomplete="current-password" required data-i18n-placeholder="login.passwordPh" placeholder="Enter your password" />
+              <button class="toggle-pw" type="button" id="togglePw" aria-label="Show password">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="row-between">
+            <label class="check"><input type="checkbox" name="remember" /> <span data-i18n="login.remember">Remember me</span></label>
+            <a href="forgot-password.html" id="forgot" data-i18n="login.forgot">Forgot your password?</a>
+          </div>
+
+          <button class="btn" type="submit" data-i18n="login.submit">→ Login</button>
+        </form>
+
+        <div class="divider" data-i18n="common.or">OR</div>
+        <div class="social">
+          <button type="button" data-social="google">
+            <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.5-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 16.1 4 9.2 8.5 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.4 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.1 39.4 16 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.6l.1.1 6.2 5.2C39.3 37.3 44 32 44 24c0-1.3-.1-2.5-.4-3.5z"/></svg>
+            <span data-i18n="login.google">Sign in with Google</span>
+          </button>
+        </div>
+
+        <p class="footer-note"><span data-i18n="login.footerBefore">Don’t have an account? </span><a href="signup.html" data-i18n="common.signup">Sign Up</a></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/i18n.js?v=2"></script>
+  <script src="js/auth.js?v=2"></script>
+  <script>
+    (() => {
+      const Auth = window.FilfiluAuth;
+      const I18n = window.FilfiluI18n;
+      const t = (k, v) => I18n.t(k, v);
+      I18n.mountSwitcher(document.getElementById("langMount"), { compact: true });
+      const params = new URLSearchParams(location.search);
+      const oauthError = params.get("error");
+
+      (async () => {
+        if (Auth.session()?.token || Auth.session()?.cookieAuth) {
+          location.href = Auth.dashboardPath();
+          return;
+        }
+        const restored = await Auth.restoreSessionFromCookie();
+        if (restored) location.href = Auth.dashboardPath();
+      })();
+
+      const root = document.documentElement;
+      document.getElementById("themeBtn").addEventListener("click", () => {
+        const dark = root.getAttribute("data-theme") === "dark"
+          || (!root.getAttribute("data-theme") && matchMedia("(prefers-color-scheme: dark)").matches);
+        root.setAttribute("data-theme", dark ? "light" : "dark");
+      });
+
+      const form = document.getElementById("loginForm");
+      const pw = document.getElementById("password");
+      const toggle = document.getElementById("togglePw");
+      toggle.addEventListener("click", () => {
+        const show = pw.type === "password";
+        pw.type = show ? "text" : "password";
+        toggle.setAttribute("aria-label", show ? "Hide password" : "Show password");
+      });
+
+      const msg = document.getElementById("msg");
+      const showMsg = (text) => { msg.textContent = text; msg.classList.add("show"); };
+      if (oauthError) {
+        showMsg(oauthError);
+        params.delete("error");
+        const clean = `${location.pathname}${params.toString() ? `?${params}` : ""}${location.hash}`;
+        history.replaceState({}, "", clean);
+      }
+
+      document.querySelectorAll('[data-social="google"]').forEach((btn) => {
+        btn.addEventListener("click", () => {
+          showMsg(t("login.googleMsg"));
+          Auth.beginGoogleSignIn();
+        });
+      });
+
+      const submitBtn = form.querySelector('[type="submit"]');
+      async function signIn(email, password) {
+        if (!email || !password) {
+          showMsg(t("login.needBoth"));
+          return;
+        }
+        showMsg(t("login.signingIn"));
+        submitBtn.disabled = true;
+        try {
+          const result = await Auth.login({ email, password });
+          if (!result.ok) {
+            showMsg(result.error || t("login.failed"));
+            submitBtn.disabled = false;
+            return;
+          }
+          showMsg(t("login.signedIn"));
+          location.href = Auth.dashboardPath();
+        } catch (err) {
+          showMsg(err.message || t("login.failed"));
+          submitBtn.disabled = false;
+        }
+      }
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        signIn(form.email.value.trim(), form.password.value);
+      });
+    })();
+  </script>
+</body>
+</html>

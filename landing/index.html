@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>FILFILU Hospital Management System</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231D6FE0'/%3E%3Cpath d='M16 8v16M8 16h16' stroke='%23fff' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #FFFFFF; --navy: #0B2447; --blue: #1D6FE0; --blue-dark: #1558B8;
+      --teal: #1BB6A8; --muted: #4F6280; --line: #E3EBF5; --soft: #EEF5FF;
+      --grad: linear-gradient(135deg, var(--blue), var(--teal));
+      --glass: rgba(255,255,255,.55); --glass-border: rgba(255,255,255,.65);
+      --shadow: 0 30px 80px rgba(11,36,71,.14); --ease: cubic-bezier(.2,.8,.2,1);
+    }
+    @media (prefers-color-scheme: dark) {
+      html:not([data-theme="light"]) {
+        --bg: #070F1F; --navy: #EAF1FF; --blue: #4C93F5; --blue-dark: #1558B8;
+        --teal: #3DD1C2; --muted: #9BB0D0; --line: #1C2B45; --soft: #122038;
+        --glass: rgba(12,22,42,.55); --glass-border: rgba(255,255,255,.12);
+        --shadow: 0 30px 80px rgba(0,0,0,.45);
+      }
+    }
+    html[data-theme="dark"] {
+      --bg: #070F1F; --navy: #EAF1FF; --blue: #4C93F5; --blue-dark: #1558B8;
+      --teal: #3DD1C2; --muted: #9BB0D0; --line: #1C2B45; --soft: #122038;
+      --glass: rgba(12,22,42,.55); --glass-border: rgba(255,255,255,.12);
+      --shadow: 0 30px 80px rgba(0,0,0,.45);
+    }
+    html[data-theme="light"] {
+      --bg: #FFFFFF; --navy: #0B2447; --blue: #1D6FE0; --blue-dark: #1558B8;
+      --teal: #1BB6A8; --muted: #4F6280; --line: #E3EBF5; --soft: #EEF5FF;
+      --glass: rgba(255,255,255,.55); --glass-border: rgba(255,255,255,.65);
+      --shadow: 0 30px 80px rgba(11,36,71,.14);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      background: var(--bg); color: var(--navy);
+      overflow-x: hidden; position: relative;
+    }
+    :focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+    a { color: inherit; text-decoration: none; }
+    button, input, select { font: inherit; }
+    .cursor-glow {
+      position: fixed; width: 420px; height: 420px; border-radius: 50%;
+      pointer-events: none; z-index: 0; transform: translate(-50%, -50%);
+      background: radial-gradient(circle, color-mix(in srgb, var(--blue) 28%, transparent), transparent 70%);
+      opacity: .7; transition: opacity .3s;
+    }
+    .blob {
+      position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0;
+      animation: drift 18s ease-in-out infinite alternate;
+    }
+    .blob-a { width: 420px; height: 420px; top: -80px; left: -60px; background: color-mix(in srgb, var(--blue) 22%, transparent); }
+    .blob-b { width: 480px; height: 480px; right: -100px; bottom: -120px; background: color-mix(in srgb, var(--teal) 20%, transparent); animation-delay: -6s; }
+    @keyframes drift { to { transform: translate(40px, 30px) scale(1.08); } }
+    #particles { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+    .wrap { position: relative; z-index: 1; width: min(1280px, calc(100% - 3rem)); margin: 0 auto; }
+
+    /* —— Header —— */
+    .site-header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1rem; padding: 1.25rem 0; position: relative; z-index: 5;
+    }
+    .brand { display: flex; align-items: center; gap: .75rem; }
+    .brand-mark {
+      width: 42px; height: 42px; border-radius: 12px; background: var(--grad);
+      display: grid; place-items: center; color: #fff; font-size: 1.4rem; font-weight: 800;
+      box-shadow: 0 10px 24px color-mix(in srgb, var(--blue) 35%, transparent);
+    }
+    .brand-text { display: flex; flex-direction: column; line-height: 1.05; }
+    .brand-text strong { font-size: 1.05rem; font-weight: 800; letter-spacing: -.02em; }
+    .brand-text span { font-size: .62rem; font-weight: 700; letter-spacing: .22em; color: var(--muted); }
+
+    .nav-pill {
+      display: flex; gap: .25rem; padding: .35rem; border-radius: 999px;
+      background: var(--glass); border: 1px solid var(--glass-border);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 8px 30px rgba(11,36,71,.06);
+    }
+    .nav-pill a {
+      padding: .55rem 1rem; border-radius: 999px; font-size: .88rem; font-weight: 600;
+      color: var(--muted); transition: .25s var(--ease);
+    }
+    .nav-pill a:hover { color: var(--navy); }
+    .nav-pill a.active { background: var(--blue); color: #fff; }
+
+    .header-actions { display: flex; align-items: center; gap: .6rem; }
+    .icon-btn {
+      width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line);
+      background: var(--bg); color: var(--navy); display: grid; place-items: center; cursor: pointer;
+    }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+      border-radius: 999px; padding: .78rem 1.25rem; font-weight: 700; font-size: .92rem;
+      border: 1px solid transparent; cursor: pointer; transition: transform .25s var(--ease), box-shadow .25s;
+      position: relative; overflow: hidden;
+    }
+    .btn-outline { background: transparent; border-color: var(--line); color: var(--navy); }
+    .btn-primary {
+      background: var(--grad); color: #fff;
+      box-shadow: 0 14px 34px color-mix(in srgb, var(--blue) 32%, transparent);
+    }
+    .btn-primary::after {
+      content: ""; position: absolute; inset: 0; transform: translateX(-120%) skewX(-20deg);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+      animation: sheen 4.5s ease-in-out infinite;
+    }
+    @keyframes sheen { 0%, 60% { transform: translateX(-120%) skewX(-20deg); } 85%, 100% { transform: translateX(120%) skewX(-20deg); } }
+    .btn-lg { padding: 1rem 1.6rem; font-size: 1rem; }
+
+    /* —— Hero —— */
+    .hero {
+      display: grid; grid-template-columns: 1fr 1.05fr; gap: clamp(2rem, 4vw, 4rem);
+      align-items: center; padding: clamp(1.5rem, 4vw, 3.5rem) 0 4rem; min-height: min(78vh, 820px);
+      position: relative;
+    }
+    .pill-label {
+      display: inline-flex; align-items: center; gap: .55rem; padding: .45rem .9rem;
+      border-radius: 999px; background: var(--soft); color: var(--muted); font-size: .82rem; font-weight: 600;
+    }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 0 color-mix(in srgb, var(--teal) 50%, transparent); animation: pulse 1.8s infinite; }
+    @keyframes pulse { 70% { box-shadow: 0 0 0 10px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+    .hero h1 {
+      margin: 1.1rem 0 .9rem; font-size: clamp(2.9rem, 6vw, 5.2rem); font-weight: 800;
+      letter-spacing: -.04em; line-height: 1.02; max-width: 11ch;
+    }
+    .hero h1 .grad {
+      background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .hero h1 .word {
+      display: inline-block; opacity: 0; transform: translateY(40px) rotate(3deg); filter: blur(8px);
+      animation: wordIn .8s var(--ease) forwards;
+    }
+    @keyframes wordIn { to { opacity: 1; transform: none; filter: none; } }
+    .hero-desc { color: var(--muted); font-size: 1.05rem; line-height: 1.6; max-width: 34ch; margin: 0 0 1.6rem; }
+    .trust {
+      display: flex; gap: 1.4rem; flex-wrap: wrap; margin-top: 2.2rem; padding-top: 1.4rem;
+      border-top: 1px solid var(--line);
+    }
+    .trust-item { display: flex; align-items: center; gap: .7rem; font-weight: 700; font-size: .9rem; }
+    .trust-icon {
+      width: 44px; height: 44px; border-radius: 50%; background: var(--soft); color: var(--blue);
+      display: grid; place-items: center; transition: .35s var(--ease);
+    }
+    .trust-item:hover .trust-icon { transform: rotate(8deg) scale(1.08); background: var(--teal); color: #fff; }
+
+    .photo-scene { perspective: 1200px; }
+    .photo-panel {
+      position: relative; border-radius: 40px; aspect-ratio: 5 / 5.4; max-height: 680px; width: 100%;
+      background: linear-gradient(160deg, var(--soft), color-mix(in srgb, var(--blue) 18%, var(--bg)));
+      box-shadow: var(--shadow); overflow: hidden; transform-style: preserve-3d;
+      transition: transform .15s ease-out;
+    }
+    .photo-panel img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
+    .photo-ph {
+      position: absolute; inset: 0; display: grid; place-items: center; gap: .6rem; text-align: center;
+      color: var(--muted); padding: 2rem; z-index: 0;
+    }
+    .photo-ph svg { width: 72px; height: 72px; opacity: .45; }
+    .glass-badge {
+      position: absolute; top: 1.1rem; right: 1.1rem; z-index: 3;
+      padding: .45rem .8rem; border-radius: 999px; font-size: .7rem; font-weight: 800; letter-spacing: .08em;
+      background: var(--glass); border: 1px solid var(--glass-border); backdrop-filter: blur(12px);
+    }
+    .float-card {
+      position: absolute; z-index: 4; padding: .85rem 1rem; border-radius: 18px;
+      background: var(--glass); border: 1px solid var(--glass-border);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      box-shadow: 0 18px 40px rgba(11,36,71,.16); transform: translate3d(var(--px,0), var(--py,0), 70px);
+      animation: bob 6s ease-in-out infinite; min-width: 150px;
+    }
+    .float-card small { display: block; color: var(--muted); font-size: .72rem; font-weight: 600; margin-bottom: .2rem; }
+    .float-card strong { font-size: 1.35rem; font-weight: 800; }
+    .card-hr { left: 6%; bottom: 14%; --px: calc(var(--mx, 0) * -8px); --py: calc(var(--my, 0) * -6px); }
+    .card-slot { right: 5%; top: 22%; display: flex; gap: .7rem; align-items: center; animation-delay: -2s; --px: calc(var(--mx, 0) * 10px); --py: calc(var(--my, 0) * 8px); }
+    .card-docs { left: 10%; top: 12%; animation-delay: -4s; --px: calc(var(--mx, 0) * -6px); --py: calc(var(--my, 0) * 10px); }
+    @keyframes bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -10px; } }
+    .slot-ico {
+      width: 40px; height: 40px; border-radius: 50%; background: var(--grad); color: #fff;
+      display: grid; place-items: center; flex-shrink: 0;
+    }
+    .avatars { display: flex; margin: .35rem 0 .15rem; }
+    .avatars span {
+      width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--bg);
+      margin-left: -8px; background: var(--grad);
+    }
+    .avatars span:first-child { margin-left: 0; background: linear-gradient(135deg, #4C93F5, #1BB6A8); }
+    .avatars span:nth-child(2) { background: linear-gradient(135deg, #1D6FE0, #7C5CFF); }
+    .avatars span:nth-child(3) { background: linear-gradient(135deg, #1BB6A8, #1D6FE0); }
+
+    dialog::backdrop { background: rgba(7,15,31,.45); backdrop-filter: blur(8px); }
+    dialog {
+      border: 1px solid var(--line); border-radius: 24px; padding: 0; width: min(420px, calc(100% - 2rem));
+      background: var(--bg); color: var(--navy); box-shadow: var(--shadow);
+      animation: pop .35s var(--ease);
+    }
+    @keyframes pop { from { opacity: 0; transform: translateY(16px) scale(.96); } }
+    .modal-inner { padding: 1.5rem; }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .modal-head h2 { margin: 0; font-size: 1.25rem; }
+    .field { display: grid; gap: .35rem; margin-bottom: .9rem; font-size: .88rem; font-weight: 600; }
+    .field input, .field select {
+      border: 1px solid var(--line); border-radius: 12px; padding: .75rem .9rem; background: var(--bg); color: var(--navy);
+    }
+    .success { text-align: center; padding: 1rem 0 .5rem; }
+    .success svg { width: 64px; height: 64px; stroke: var(--teal); fill: none; stroke-width: 3; }
+    .success svg circle, .success svg path {
+      stroke-dasharray: 120; stroke-dashoffset: 120; animation: draw .7s var(--ease) forwards;
+    }
+    .success svg path { animation-delay: .25s; }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+
+    /* —— Content sections —— */
+    .section { position: relative; z-index: 1; padding: clamp(3.5rem, 7vw, 5.5rem) 0; scroll-margin-top: 5rem; }
+    .section-alt { background: color-mix(in srgb, var(--soft) 70%, var(--bg)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .section-head { max-width: 38rem; margin-bottom: 2.4rem; }
+    .section-kicker {
+      display: inline-flex; margin-bottom: .7rem; padding: .35rem .75rem; border-radius: 999px;
+      background: var(--soft); color: var(--blue); font-size: .75rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+    }
+    .section-head h2 {
+      margin: 0 0 .7rem; font-size: clamp(1.8rem, 3.5vw, 2.6rem); font-weight: 800;
+      letter-spacing: -.03em; line-height: 1.15;
+    }
+    .section-head p { margin: 0; color: var(--muted); font-size: 1.02rem; line-height: 1.65; }
+
+    .about-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: start; }
+    .about-story p { color: var(--muted); line-height: 1.7; margin: 0 0 1rem; }
+    .about-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .stat-tile {
+      padding: 1.25rem 1.2rem; border-radius: 20px; background: var(--bg); border: 1px solid var(--line);
+      box-shadow: 0 10px 28px rgba(11,36,71,.05);
+    }
+    .stat-tile strong { display: block; font-size: 1.7rem; font-weight: 800; letter-spacing: -.03em; }
+    .stat-tile span { color: var(--muted); font-size: .85rem; font-weight: 600; }
+    .about-values { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1.75rem; }
+    .value-item { padding: 1.1rem 1rem; border-radius: 18px; background: var(--soft); }
+    .value-item h3 { margin: 0 0 .35rem; font-size: 1rem; }
+    .value-item p { margin: 0; color: var(--muted); font-size: .88rem; line-height: 1.5; }
+
+    .cards-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1rem; }
+    .cards-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.1rem; }
+    .info-card {
+      padding: 1.35rem 1.25rem; border-radius: 22px; background: var(--bg); border: 1px solid var(--line);
+      transition: transform .25s var(--ease), border-color .25s, box-shadow .25s;
+    }
+    .info-card:hover {
+      transform: translateY(-4px); border-color: color-mix(in srgb, var(--blue) 35%, var(--line));
+      box-shadow: 0 16px 36px rgba(11,36,71,.08);
+    }
+    .info-ico {
+      width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; margin-bottom: .9rem;
+      background: var(--soft); color: var(--blue); font-weight: 800;
+    }
+    .info-card h3 { margin: 0 0 .4rem; font-size: 1.05rem; }
+    .info-card p { margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.55; }
+    .info-card .meta { display: block; margin-top: .75rem; font-size: .78rem; font-weight: 700; color: var(--teal); }
+
+    .dept-card .hours { margin-top: .85rem; font-size: .8rem; color: var(--muted); font-weight: 600; }
+    .dept-card .staff { margin-top: .35rem; font-size: .8rem; font-weight: 700; color: var(--navy); }
+
+    .contact-grid { display: grid; grid-template-columns: .95fr 1.05fr; gap: clamp(1.5rem, 4vw, 2.5rem); }
+    .contact-list { display: grid; gap: 1rem; }
+    .contact-item {
+      display: grid; grid-template-columns: 46px 1fr; gap: .9rem; align-items: start;
+      padding: 1.1rem 1.15rem; border-radius: 18px; border: 1px solid var(--line); background: var(--bg);
+    }
+    .contact-item .info-ico { margin: 0; }
+    .contact-item h3 { margin: 0 0 .2rem; font-size: .95rem; }
+    .contact-item p, .contact-item a { margin: 0; color: var(--muted); font-size: .9rem; font-weight: 600; text-decoration: none; }
+    .contact-item a:hover { color: var(--blue); }
+    .contact-form {
+      padding: 1.5rem; border-radius: 24px; background: var(--bg); border: 1px solid var(--line);
+      box-shadow: 0 16px 40px rgba(11,36,71,.06);
+    }
+    .contact-form .field { margin-bottom: .85rem; }
+    .contact-form textarea {
+      border: 1px solid var(--line); border-radius: 12px; padding: .75rem .9rem;
+      background: var(--bg); color: var(--navy); width: 100%; min-height: 110px; resize: vertical; font: inherit;
+    }
+    .site-footer {
+      position: relative; z-index: 1; padding: 1.5rem 0 2rem; border-top: 1px solid var(--line);
+      color: var(--muted); font-size: .85rem; font-weight: 600; text-align: center;
+    }
+
+    @media (max-width: 980px) {
+      .nav-pill { display: none; }
+      .hero { grid-template-columns: 1fr; }
+      .photo-panel { max-height: 520px; margin: 0 auto; }
+      .about-grid, .contact-grid { grid-template-columns: 1fr; }
+      .cards-3, .cards-4, .about-values { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 640px) {
+      .cards-3, .cards-4, .about-values, .about-stats { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      .wrap { width: min(1280px, calc(100% - 1.5rem)); }
+      .float-card { transform: translate3d(0,0,0) scale(.92); }
+      .card-hr { left: 4%; bottom: 10%; }
+      .card-slot { right: 4%; top: 18%; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+      .hero h1 .word { opacity: 1; transform: none; filter: none; }
+      .blob { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="cursor-glow" id="glow" aria-hidden="true"></div>
+  <div class="blob blob-a" aria-hidden="true"></div>
+  <div class="blob blob-b" aria-hidden="true"></div>
+
+  <header class="site-header wrap">
+    <a class="brand" href="#home" aria-label="Filfilu Hospital home">
+      <span class="brand-mark" aria-hidden="true">+</span>
+      <span class="brand-text"><strong>FILFILU</strong><span data-i18n="brand.hospital">HOSPITAL</span></span>
+    </a>
+    <nav class="nav-pill" aria-label="Primary">
+      <a class="active" href="#home" data-i18n="common.home">Home</a>
+      <a href="#about" data-i18n="common.about">About</a>
+      <a href="#services" data-i18n="common.services">Services</a>
+      <a href="#departments" data-i18n="common.departments">Departments</a>
+      <a href="#contact" data-i18n="common.contact">Contact</a>
+    </nav>
+    <div class="header-actions">
+      <span id="langMount"></span>
+      <button class="icon-btn" id="themeBtn" type="button" data-i18n-aria="common.theme" aria-label="Toggle dark mode">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z"/></svg>
+      </button>
+      <a class="btn btn-outline btn-login" href="login.html" data-i18n="common.login">Login</a>
+      <button class="btn btn-primary magnetic" type="button" data-book data-i18n="common.book">Book Appointment</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero wrap" id="home" aria-label="Welcome">
+      <canvas id="particles" aria-hidden="true"></canvas>
+      <div class="hero-copy">
+        <span class="pill-label"><span class="pulse" aria-hidden="true"></span> <span data-i18n="home.welcomePill">Welcome to Filfilu Hospital</span></span>
+        <h1 id="headline" data-i18n="home.headline">Your Health, Our Priority.</h1>
+        <p class="hero-desc" data-i18n="home.desc">Quality medical care, modern facilities, and compassionate service — all in one place.</p>
+        <button class="btn btn-primary btn-lg magnetic" type="button" data-book data-i18n="common.book">Book Appointment</button>
+        <div class="trust">
+          <div class="trust-item">
+            <span class="trust-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6C19 16.5 12 21 12 21z"/></svg>
+            </span> <span data-i18n="home.trustCare">Trusted Care</span>
+          </div>
+          <div class="trust-item">
+            <span class="trust-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5z"/></svg>
+            </span> <span data-i18n="home.trustDoctors">Expert Doctors</span>
+          </div>
+          <div class="trust-item">
+            <span class="trust-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l1.5 4.5H18l-3.6 2.7 1.4 4.3L12 13.8 8.2 15.5l1.4-4.3L6 8.5h4.5z"/></svg>
+            </span> <span data-i18n="home.trustTomorrow">Better Tomorrow</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="photo-scene" id="scene">
+        <div class="photo-panel" id="panel">
+          <div class="photo-ph" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5z"/></svg>
+            <div>Doctor photo goes here, save it as doctor.jpg next to this file</div>
+          </div>
+          <img src="doctor.jpg" alt="Filfilu Hospital doctor" onerror="this.remove()" />
+          <span class="glass-badge">FILFILU HOSPITAL</span>
+
+          <!-- SAMPLE DATA: replace BPM / slot / online count from backend -->
+          <div class="float-card card-hr">
+            <small>Live heart rate</small>
+            <strong><span id="bpm">72</span> <span style="font-size:.85rem;font-weight:600;color:var(--muted)">BPM</span></strong>
+            <canvas id="ecg" width="400" height="112" style="width:100%;height:48px;display:block;margin-top:.35rem" aria-hidden="true"></canvas>
+          </div>
+          <div class="float-card card-slot">
+            <span class="slot-ico" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+            </span>
+            <div><small>Next available</small><strong style="font-size:.95rem">Today, 3:30 PM</strong></div>
+          </div>
+          <div class="float-card card-docs">
+            <small>Doctors online</small>
+            <div class="avatars" aria-hidden="true"><span></span><span></span><span></span></div>
+            <strong><span id="docsOnline">0</span></strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SAMPLE / MOCK DATA: replace About, Services, Departments, Contact from backend later -->
+    <section class="section" id="about" aria-labelledby="about-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-kicker" data-i18n="home.aboutKicker">About</span>
+          <h2 id="about-title" data-i18n="home.aboutTitle">Care rooted in community</h2>
+          <p>Filfilu Hospital Management System connects patients, clinicians, and hospital teams in one calm, modern workspace.</p>
+        </div>
+        <div class="about-grid">
+          <div class="about-story">
+            <p>Founded to serve families across the region, Filfilu blends compassionate bedside care with digital tools for scheduling, records, and duty coordination.</p>
+            <p>Our mission is simple: quality medical care, modern facilities, and clear communication — so every visit feels guided and personal.</p>
+            <div class="about-values">
+              <div class="value-item">
+                <h3>Compassion</h3>
+                <p>Every patient is treated with dignity, patience, and respect.</p>
+              </div>
+              <div class="value-item">
+                <h3>Excellence</h3>
+                <p>Evidence-based practice guided by senior specialists.</p>
+              </div>
+              <div class="value-item">
+                <h3>Access</h3>
+                <p>Appointments and updates available when you need them.</p>
+              </div>
+            </div>
+          </div>
+          <div class="about-stats" aria-label="Hospital highlights">
+            <div class="stat-tile"><strong>12+</strong><span>Years of service</span></div>
+            <div class="stat-tile"><strong>50+</strong><span>Specialist doctors</span></div>
+            <div class="stat-tile"><strong>18k</strong><span>Patients served yearly</span></div>
+            <div class="stat-tile"><strong>24/7</strong><span>Emergency coverage</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="services" aria-labelledby="services-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-kicker" data-i18n="home.servicesKicker">Services</span>
+          <h2 id="services-title" data-i18n="home.servicesTitle">What we offer</h2>
+          <p>Mock catalogue of clinical and support services — swap these for live offerings from your system.</p>
+        </div>
+        <div class="cards-3">
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
+            <h3>Outpatient clinics</h3>
+            <p>Book same-week visits with generalists and specialists across core care lines.</p>
+            <span class="meta">Avg wait · 2 days</span>
+          </article>
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-3h6l2 3h4v7H3z"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg></div>
+            <h3>Emergency & triage</h3>
+            <p>Round-the-clock emergency assessment with rapid referral into inpatient units.</p>
+            <span class="meta">Open · Always</span>
+          </article>
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M10 3v6l-5 9a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 18l-5-9V3"/></svg></div>
+            <h3>Diagnostics lab</h3>
+            <p>Blood work, imaging prep, and digital results shared to your patient profile.</p>
+            <span class="meta">Results · 24–48 hrs</span>
+          </article>
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"/><path d="M6 21v-1a5 5 0 0 1 5-5h0a3 3 0 0 1 3 3v3"/></svg></div>
+            <h3>Maternity care</h3>
+            <p>Antenatal visits, delivery suites, and postnatal follow-up for new parents.</p>
+            <span class="meta">Dedicated wing</span>
+          </article>
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="12" rx="3"/><path d="M12 12v4M10 14h4M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div>
+            <h3>In-house pharmacy</h3>
+            <p>Prescription fill and counseling for discharge and chronic medication plans.</p>
+            <span class="meta">Mon–Sat · 8am–8pm</span>
+          </article>
+          <article class="info-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/></svg></div>
+            <h3>Telehealth follow-up</h3>
+            <p>Secure video check-ins for stable patients after clinic or surgery.</p>
+            <span class="meta">By appointment</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="departments" aria-labelledby="departments-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-kicker" data-i18n="home.deptKicker">Departments</span>
+          <h2 id="departments-title">Clinical departments</h2>
+          <p>Sample department directory with hours and lead clinicians — replace with live roster data.</p>
+        </div>
+        <div class="cards-4">
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><path d="M18 14v2a4 4 0 0 1-8 0"/><circle cx="18" cy="19" r="2"/></svg></div>
+            <h3>General Medicine</h3>
+            <p>Primary care, chronic disease management, and health check-ups.</p>
+            <p class="staff">Lead · Dr. Helen Tesfaye</p>
+            <p class="hours">Hours · Mon–Fri 8:00–17:00</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="9" r="4"/><path d="M6 20c1.5-3 4-4.5 6-4.5S16.5 17 18 20"/></svg></div>
+            <h3>Pediatrics</h3>
+            <p>Child wellness visits, immunizations, and acute pediatric care.</p>
+            <p class="staff">Lead · Dr. Dawit Bekele</p>
+            <p class="hours">Hours · Mon–Sat 8:00–16:00</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6C19 16.5 12 21 12 21z"/></svg></div>
+            <h3>Cardiology</h3>
+            <p>ECG, echocardiography, and heart-risk screening clinics.</p>
+            <p class="staff">Lead · Dr. Sara Mekonnen</p>
+            <p class="hours">Hours · Mon–Fri 9:00–16:00</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3c4 4 6 8 0 18M17 3c-4 4-6 8 0 18M7 8h10M7 16h10"/></svg></div>
+            <h3>Laboratory</h3>
+            <p>Pathology, chemistry panels, and infection screening.</p>
+            <p class="staff">Lead · Lab Dir. Yonas Hailu</p>
+            <p class="hours">Hours · Daily 7:00–20:00</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></div>
+            <h3>Maternity</h3>
+            <p>Obstetrics, prenatal ultrasound, and postnatal support.</p>
+            <p class="staff">Lead · Dr. Rahel Abebe</p>
+            <p class="hours">Hours · 24/7 labor suite</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7a2.5 2.5 0 1 1-2-4 2.5 2.5 0 0 1 2 4zm0 0 10 10m0 0a2.5 2.5 0 1 0 4-2 2.5 2.5 0 0 0-4 2zM17 7a2.5 2.5 0 1 0 2-4 2.5 2.5 0 0 0-2 4zm0 0L7 17m0 0a2.5 2.5 0 1 1-4 2 2.5 2.5 0 0 1 4-2z"/></svg></div>
+            <h3>Orthopedics</h3>
+            <p>Fracture clinics, joint care, and physiotherapy referral.</p>
+            <p class="staff">Lead · Dr. Mulugeta Assefa</p>
+            <p class="hours">Hours · Tue–Sat 8:30–15:30</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6a3 3 0 0 1 6 0 3 3 0 0 1 3 3c0 1.5-.7 2.3-1.5 3 .8.7 1.5 1.5 1.5 3a3 3 0 0 1-3 3v2H12m0-17a3 3 0 0 0-3 3c0 1 .3 1.6.8 2.2C8.5 9.8 7 10.8 7 13a3 3 0 0 0 3 3v2h2"/></svg></div>
+            <h3>Neurology</h3>
+            <p>Headache, seizure, and stroke follow-up consultations.</p>
+            <p class="staff">Lead · Dr. Kidist Alemu</p>
+            <p class="hours">Hours · Wed–Fri 9:00–15:00</p>
+          </article>
+          <article class="info-card dept-card">
+            <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>
+            <h3>Ophthalmology</h3>
+            <p>Vision screening, cataract prep, and eye infection care.</p>
+            <p class="staff">Lead · Dr. Bemnet Girma</p>
+            <p class="hours">Hours · Mon–Thu 8:00–14:00</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="contact" aria-labelledby="contact-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-kicker" data-i18n="home.contactKicker">Contact</span>
+          <h2 id="contact-title" data-i18n="home.contactTitle">Talk to Filfilu</h2>
+          <p>Mock contact details and a message form — wire submit to your backend when ready.</p>
+        </div>
+        <div class="contact-grid">
+          <div class="contact-list">
+            <div class="contact-item">
+              <div class="info-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s7-6 7-11a7 7 0 1 0-14 0c0 5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
+              <div>
+                <h3>Main campus</h3>
+                <p>Filfilu Avenue, Bole Sub-city<br />Addis Ababa, Ethiopia</p>
+              </div>
+            </div>
+            <div class="contact-item">
+              <div class="info-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8 9.6a16 16 0 0 0 6.4 6.4l1.2-1.2a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6A2 2 0 0 1 22 16.9z"/></svg></div>
+              <div>
+                <h3>Phone</h3>
+                <p><a href="tel:+251911000000">+251 911 000 000</a> · Reception</p>
+                <p><a href="tel:+251911000911">+251 911 000 911</a> · Emergency</p>
+              </div>
+            </div>
+            <div class="contact-item">
+              <div class="info-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></div>
+              <div>
+                <h3>Email</h3>
+                <p><a href="mailto:care@filfilu.hospital">care@filfilu.hospital</a></p>
+                <p><a href="mailto:appointments@filfilu.hospital">appointments@filfilu.hospital</a></p>
+              </div>
+            </div>
+            <div class="contact-item">
+              <div class="info-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+              <div>
+                <h3>Front desk hours</h3>
+                <p>Mon–Fri 7:30–18:00 · Sat 8:00–13:00</p>
+                <p>Emergency department open 24/7</p>
+              </div>
+            </div>
+          </div>
+          <form class="contact-form" id="contactForm">
+            <label class="field">Full name<input name="name" required autocomplete="name" placeholder="Your name" /></label>
+            <label class="field">Email<input name="email" type="email" required autocomplete="email" placeholder="you@email.com" /></label>
+            <label class="field">Topic
+              <select name="topic" required>
+                <option value="">Select a topic</option>
+                <option>General inquiry</option>
+                <option>Appointments</option>
+                <option>Billing</option>
+                <option>Feedback</option>
+              </select>
+            </label>
+            <label class="field">Message<textarea name="message" required placeholder="How can we help?"></textarea></label>
+            <button class="btn btn-primary" type="submit" style="width:100%">Send message</button>
+            <p id="contactMsg" style="display:none;margin:.9rem 0 0;color:var(--teal);font-weight:700;font-size:.9rem" role="status"></p>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">© Filfilu Hospital · Demonstration content · Not for clinical use</div>
+  </footer>
+
+  <dialog id="bookDialog" aria-label="Book an appointment">
+    <div class="modal-inner">
+      <div class="modal-head">
+        <h2>Book Appointment</h2>
+        <button class="icon-btn" type="button" id="closeDialog" aria-label="Close booking dialog">✕</button>
+      </div>
+      <form id="bookForm">
+        <label class="field">Full name<input name="name" required autocomplete="name" /></label>
+        <label class="field">Department
+          <select name="department" required>
+            <option value="">Select department</option>
+            <option>General Medicine</option>
+            <option>Pediatrics</option>
+            <option>Maternity</option>
+            <option>Cardiology</option>
+            <option>Laboratory</option>
+          </select>
+        </label>
+        <label class="field">Preferred date<input name="date" type="date" required /></label>
+        <button class="btn btn-primary" style="width:100%" type="submit">Request visit</button>
+      </form>
+      <div class="success" id="bookSuccess" hidden>
+        <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28"/><path d="M18 33l10 10 18-20"/></svg>
+        <p id="successText"></p>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="js/i18n.js"></script>
+  <script>
+    (() => {
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const root = document.documentElement;
+      const css = (v) => getComputedStyle(root).getPropertyValue(v).trim();
+      const I18n = window.FilfiluI18n;
+      I18n.mountSwitcher(document.getElementById("langMount"), { compact: true });
+
+      /* Theme toggle — no storage */
+      const themeBtn = document.getElementById("themeBtn");
+      themeBtn.addEventListener("click", () => {
+        const dark = root.getAttribute("data-theme") === "dark"
+          || (!root.getAttribute("data-theme") && matchMedia("(prefers-color-scheme: dark)").matches);
+        root.setAttribute("data-theme", dark ? "light" : "dark");
+      });
+
+      /* Headline word reveal (rebuilt on language change) */
+      const h1 = document.getElementById("headline");
+      function paintHeadline() {
+        const text = I18n.t("home.headline");
+        h1.setAttribute("data-i18n", "home.headline");
+        const words = text.trim().split(/\s+/);
+        h1.innerHTML = words.map((w, i) => {
+          const grad = i >= words.length - 2 ? " grad" : "";
+          return `<span class="word${grad}" style="animation-delay:${reduce ? 0 : i * 0.12}s">${w}${i < words.length - 1 ? "&nbsp;" : ""}</span>`;
+        }).join("");
+      }
+      paintHeadline();
+      window.addEventListener("filfilu:langchange", () => {
+        I18n.apply(document);
+        paintHeadline();
+      });
+
+      /* Cursor glow */
+      const glow = document.getElementById("glow");
+      let mx = innerWidth / 2, my = innerHeight / 2;
+      addEventListener("pointermove", (e) => {
+        mx = e.clientX; my = e.clientY;
+        glow.style.left = mx + "px"; glow.style.top = my + "px";
+      });
+
+      /* Magnetic buttons */
+      document.querySelectorAll(".magnetic").forEach((btn) => {
+        btn.addEventListener("pointermove", (e) => {
+          if (reduce) return;
+          const r = btn.getBoundingClientRect();
+          const x = e.clientX - (r.left + r.width / 2);
+          const y = e.clientY - (r.top + r.height / 2);
+          btn.style.transform = `translate(${x * 0.18}px, ${y * 0.22}px)`;
+        });
+        btn.addEventListener("pointerleave", () => { btn.style.transform = ""; });
+      });
+
+      /* 3D tilt + parallax vars */
+      const scene = document.getElementById("scene");
+      const panel = document.getElementById("panel");
+      scene.addEventListener("pointermove", (e) => {
+        if (reduce) return;
+        const r = scene.getBoundingClientRect();
+        const px = (e.clientX - r.left) / r.width - 0.5;
+        const py = (e.clientY - r.top) / r.height - 0.5;
+        panel.style.transform = `rotateY(${px * 14}deg) rotateX(${-py * 12}deg)`;
+        panel.style.setProperty("--mx", px.toFixed(3));
+        panel.style.setProperty("--my", py.toFixed(3));
+      });
+      scene.addEventListener("pointerleave", () => {
+        panel.style.transform = "";
+        panel.style.setProperty("--mx", "0");
+        panel.style.setProperty("--my", "0");
+      });
+
+      /* Doctors online count-up — SAMPLE: target 24 */
+      const ONLINE_TARGET = 24;
+      const docsEl = document.getElementById("docsOnline");
+      if (!reduce) {
+        const start = performance.now();
+        const tick = (t) => {
+          const p = Math.min(1, (t - start) / 1600);
+          docsEl.textContent = Math.round(ONLINE_TARGET * (1 - Math.pow(1 - p, 3)));
+          if (p < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      } else docsEl.textContent = ONLINE_TARGET;
+
+      /* Live ECG + BPM — SAMPLE: BPM 70–76 */
+      const bpmEl = document.getElementById("bpm");
+      const ecg = document.getElementById("ecg");
+      const ectx = ecg.getContext("2d");
+      let bpm = 72, phase = 0, bpmTimer = 0;
+      const gauss = (x, mu, s, a) => a * Math.exp(-((x - mu) ** 2) / (2 * s * s));
+      const pqrst = (x) => gauss(x, 0.18, 0.03, 0.15) + gauss(x, 0.38, 0.012, -0.18)
+        + gauss(x, 0.42, 0.018, 1) + gauss(x, 0.47, 0.015, -0.35) + gauss(x, 0.68, 0.05, 0.28);
+      const ecgBuf = new Float32Array(400);
+      function drawEcg(dt) {
+        phase += (dt / 1000) * (bpm / 60);
+        const v = pqrst(phase % 1);
+        ecgBuf.copyWithin(0, 1); ecgBuf[ecgBuf.length - 1] = v;
+        ectx.clearRect(0, 0, 400, 112);
+        ectx.beginPath(); ectx.strokeStyle = css("--teal"); ectx.lineWidth = 2;
+        for (let i = 0; i < ecgBuf.length; i++) {
+          const y = 56 - ecgBuf[i] * 42;
+          i ? ectx.lineTo(i, y) : ectx.moveTo(i, y);
+        }
+        ectx.stroke();
+        bpmTimer += dt;
+        if (bpmTimer > 1500) {
+          bpmTimer = 0;
+          bpm = 70 + Math.floor(Math.random() * 7);
+          bpmEl.textContent = bpm;
+        }
+      }
+
+      /* Particle spider-web network */
+      const pCanvas = document.getElementById("particles");
+      const pctx = pCanvas.getContext("2d");
+      const hero = pCanvas.parentElement;
+      const dots = [];
+      const CONNECT = 160;
+      let mouseIn = false, pmx = 0, pmy = 0;
+      function resizeParticles() {
+        const r = hero.getBoundingClientRect();
+        pCanvas.width = r.width; pCanvas.height = r.height;
+        if (!dots.length) {
+          for (let i = 0; i < 60; i++) {
+            dots.push({
+              x: Math.random() * r.width, y: Math.random() * r.height,
+              vx: (Math.random() - 0.5) * 0.35, vy: (Math.random() - 0.5) * 0.35,
+              ox: 0, oy: 0
+            });
+          }
+        }
+      }
+      resizeParticles();
+      addEventListener("resize", resizeParticles);
+      hero.addEventListener("pointermove", (e) => {
+        const r = hero.getBoundingClientRect();
+        mouseIn = true; pmx = e.clientX - r.left; pmy = e.clientY - r.top;
+      });
+      hero.addEventListener("pointerleave", () => { mouseIn = false; });
+
+      function drawParticles() {
+        const w = pCanvas.width, h = pCanvas.height;
+        pctx.clearRect(0, 0, w, h);
+        const blue = css("--blue");
+        for (const d of dots) {
+          if (mouseIn) {
+            const dx = pmx - d.x, dy = pmy - d.y, dist = Math.hypot(dx, dy) || 1;
+            if (dist < CONNECT) {
+              d.vx += (dx / dist) * 0.02;
+              d.vy += (dy / dist) * 0.02;
+            }
+          } else {
+            d.vx *= 0.99; d.vy *= 0.99;
+          }
+          d.vx += (Math.random() - 0.5) * 0.01;
+          d.vy += (Math.random() - 0.5) * 0.01;
+          const sp = Math.hypot(d.vx, d.vy);
+          if (sp > 0.9) { d.vx *= 0.9 / sp; d.vy *= 0.9 / sp; }
+          d.x += d.vx; d.y += d.vy;
+          if (d.x < 0 || d.x > w) d.vx *= -1;
+          if (d.y < 0 || d.y > h) d.vy *= -1;
+          d.x = Math.max(0, Math.min(w, d.x));
+          d.y = Math.max(0, Math.min(h, d.y));
+        }
+        for (let i = 0; i < dots.length; i++) {
+          for (let j = i + 1; j < dots.length; j++) {
+            const a = dots[i], b = dots[j];
+            const dist = Math.hypot(a.x - b.x, a.y - b.y);
+            if (dist < CONNECT) {
+              pctx.strokeStyle = blue; pctx.globalAlpha = (1 - dist / CONNECT) * 0.35;
+              pctx.lineWidth = 1; pctx.beginPath();
+              pctx.moveTo(a.x, a.y); pctx.lineTo(b.x, b.y); pctx.stroke();
+            }
+          }
+          if (mouseIn) {
+            const dist = Math.hypot(dots[i].x - pmx, dots[i].y - pmy);
+            if (dist < CONNECT) {
+              pctx.strokeStyle = blue;
+              pctx.globalAlpha = (1 - dist / CONNECT) * 0.85;
+              pctx.lineWidth = 1.5 * (1 - dist / CONNECT);
+              pctx.beginPath();
+              pctx.moveTo(dots[i].x, dots[i].y); pctx.lineTo(pmx, pmy); pctx.stroke();
+            }
+          }
+        }
+        pctx.globalAlpha = 1;
+        for (const d of dots) {
+          pctx.fillStyle = blue; pctx.beginPath();
+          pctx.arc(d.x, d.y, 2.2, 0, Math.PI * 2); pctx.fill();
+        }
+      }
+
+      let last = performance.now();
+      function frame(now) {
+        const dt = Math.min(40, now - last); last = now;
+        if (!reduce) { drawEcg(dt); drawParticles(); }
+        requestAnimationFrame(frame);
+      }
+      if (!reduce) requestAnimationFrame(frame);
+      else { bpmEl.textContent = bpm; drawEcg(16); }
+
+      /* Booking modal */
+      const dialog = document.getElementById("bookDialog");
+      const form = document.getElementById("bookForm");
+      const success = document.getElementById("bookSuccess");
+      const dateInput = form.elements.date;
+      const today = new Date(); dateInput.min = today.toISOString().slice(0, 10);
+      document.querySelectorAll("[data-book]").forEach((b) => b.addEventListener("click", () => {
+        success.hidden = true; form.hidden = false; form.reset();
+        dateInput.min = new Date().toISOString().slice(0, 10);
+        dialog.showModal();
+      }));
+      document.getElementById("closeDialog").addEventListener("click", () => dialog.close());
+      dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); });
+      const API = (window.FILFILU_API_BASE || `${location.origin}/api`).replace(/\/$/, "");
+      async function postApi(path, payload) {
+        const res = await fetch(`${API}${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+        return body;
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = form.elements.name.value.trim();
+        const department = form.elements.department.value;
+        const date = form.elements.date.value;
+        let text = `${name}, your ${department} visit is requested for ${date}.`;
+        try {
+          const res = await postApi("/bookings", { name, department, date });
+          if (res?.message) text = res.message;
+        } catch {
+          /* offline: keep local confirmation */
+        }
+        form.hidden = true;
+        success.hidden = false;
+        document.getElementById("successText").textContent = text;
+      });
+
+      /* Contact form → API (falls back to local confirmation) */
+      const contactForm = document.getElementById("contactForm");
+      const contactMsg = document.getElementById("contactMsg");
+      contactForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = contactForm.elements.name.value.trim();
+        const email = contactForm.elements.email.value.trim();
+        const topic = contactForm.elements.topic.value;
+        const message = contactForm.elements.message.value.trim();
+        let text = `Thanks, ${name}. Your message was recorded (demo).`;
+        try {
+          const res = await postApi("/contact", { name, email, topic, message });
+          if (res?.message) text = res.message;
+        } catch {
+          /* offline */
+        }
+        contactMsg.style.display = "block";
+        contactMsg.textContent = text;
+        contactForm.reset();
+      });
+
+      /* Nav active state while scrolling */
+      const navLinks = [...document.querySelectorAll(".nav-pill a")];
+      const sections = ["home", "about", "services", "departments", "contact"]
+        .map((id) => document.getElementById(id))
+        .filter(Boolean);
+      const setActive = () => {
+        let current = "home";
+        for (const sec of sections) {
+          if (sec.getBoundingClientRect().top <= 120) current = sec.id;
+        }
+        navLinks.forEach((a) => a.classList.toggle("active", a.getAttribute("href") === `#${current}`));
+      };
+      addEventListener("scroll", setActive, { passive: true });
+      setActive();
+    })();
+  </script>
+</body>
+</html>
