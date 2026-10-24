@@ -13,12 +13,20 @@ Deployed automatically to GitHub Pages on every push to `main`.
 
 ## Quick start
 
+The product UI and API are one server on port **8080**.
+
 ```bash
+cd backend
 npm install
+npm run db:generate
+npm run db:push
+npm run db:seed
 npm run dev
 ```
 
-Open the URL Vite prints (usually `http://localhost:5173`). Local dev uses Vite’s root; production builds use `base: '/FILFILU-HMS/'` for project Pages.
+Open **http://127.0.0.1:8080/login.html**. Demo password for every seeded account: `filfilu`.
+
+The Phase 1 Vite UI is separate: from the repo root, `npm install` then `npm run dev` (usually http://localhost:5173).
 
 ### Other scripts
 
@@ -70,19 +78,11 @@ Components do **not** mutate global mock arrays; all reads/writes go through ser
 
 ## Full-stack product (landing + API)
 
-**Product UI:** http://127.0.0.1:8080/login.html  
+**Product UI:** http://127.0.0.1:8080/login.html
 
-```bash
-# API
-cd backend && npm install
-npm run db:generate && npm run db:push && npm run db:seed
-npm run dev
+`npm run dev` inside `backend/` serves the landing pages and `/api` on that same port. Login calls `/api` on the page’s own host, so a second terminal is not required. See [`backend/README.md`](backend/README.md).
 
-# Landing (separate terminal)
-cd landing && python3 -m http.server 8080 --bind 0.0.0.0
-```
-
-API: **http://127.0.0.1:4000** · Login requires a live API (JWT). See [`backend/README.md`](backend/README.md).
+**Google Sign-In:** the landing **Sign in with Google** button uses Express OAuth (`openid email profile`). Setup steps and redirect URIs are in [`backend/README.md`](backend/README.md#google-sign-in-oauth-20--openid-connect).
 
 Still out of scope for later: PostgreSQL RLS, EMR/billing modules, email/SMS delivery.
 

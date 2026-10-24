@@ -11,6 +11,29 @@
   ];
   const dict = {
   "en": {
+    "signup.chooseRole": "Choose a role to continue.",
+    "signup.roleDesc.admin": "Staff, schedules & approvals",
+    "signup.roleDesc.nurse": "Ward board & shifts",
+    "signup.roleDesc.doctor": "Clinic roster & patients",
+    "signup.roleDesc.patient": "Book visits & care updates",
+    "forgot.footerLogin": "Back to Login",
+    "forgot.footerBefore": "Remembered it? ",
+    "forgot.backLogin": "← Back to login",
+    "forgot.tooMany": "Too many attempts. Please wait a few minutes and try again.",
+    "forgot.invalid": "That email address doesn't look valid. Please check and try again.",
+    "forgot.empty": "Please enter your email address.",
+    "forgot.success": "If an account exists, a reset link has been sent. Check your inbox and spam folder.",
+    "forgot.sending": "Sending reset link…",
+    "forgot.submit": "Send reset link",
+    "forgot.email": "E-mail",
+    "forgot.visualBody": "Enter your email and we'll send a secure reset link — never your password.",
+    "forgot.visualTitleAfter": ".",
+    "forgot.visualTitleEm": "better care",
+    "forgot.visualTitleBefore": "Reset access to ",
+    "forgot.sub": "We'll email you a link to choose a new password.",
+    "forgot.title": "Forgot Password",
+    "login.failed": "Login failed.",
+    "login.signedIn": "Signed in. Opening your workspace…",
     "brand.hospital": "HOSPITAL",
     "brand.workspace": "WORKSPACE",
     "lang.label": "Language",
@@ -35,7 +58,7 @@
     "login.statSpecialists": "Specialists",
     "login.statTrust": "Patient trust",
     "login.title": "Welcome Back",
-    "login.subHtml": "Pick a demo account — your <strong>role is assigned automatically</strong>. Password: <strong>filfilu</strong>",
+    "login.subHtml": "Sign in to manage appointments, records, and your care journey.",
     "login.role": "Assigned role",
     "login.roleHint": "Role must match the account. Use a demo chip below for a perfect match.",
     "login.email": "E-mail",
@@ -51,7 +74,7 @@
     "login.roleAssigned": "Role assigned: {label} ({via}). Opening your professional workspace…",
     "login.viaApi": "API",
     "login.forgotMsg": "Password reset will connect to your backend soon. Use Sign Up if you are new.",
-    "login.googleMsg": "Google sign-in will connect to your auth provider later.",
+    "login.googleMsg": "Redirecting to Google…",
     "login.selected": "Selected {label}: {name}. Click Login.",
     "login.roleOpt.admin": "Administrator",
     "login.roleOpt.doctor": "Doctor",
@@ -73,6 +96,10 @@
     "signup.passwordPh": "Create a password",
     "signup.terms": "I agree to Filfilu’s care terms and privacy notice.",
     "signup.submit": "Create account",
+    "signup.google": "Continue with Google",
+    "signup.googleMsg": "Continuing with Google…",
+    "signup.googleNeedRole": "Choose a role before continuing with Google.",
+    "signup.googleNeedTerms": "Agree to the care terms before continuing with Google.",
     "signup.footerBefore": "Already have an account? ",
     "signup.creating": "Creating your account…",
     "signup.welcome": "Welcome, {first}! {label} role assigned. Opening your workspace…",
@@ -232,7 +259,7 @@
     "role.doctor.greeting": "Clinical workspace",
     "role.nurse.greeting": "Ward care workspace",
     "role.patient.greeting": "Personal care portal",
-    "role.admin.blurb": "Manage staff, publish duty schedules, approve exchanges, and monitor hospital-wide activity.",
+    "role.admin.blurb": "Set up users and roles, publish rosters, oversee appointments, and keep the system safe — not clinical charting.",
     "role.doctor.blurb": "Review your roster, assigned patients, today’s visits, and shift-swap requests.",
     "role.nurse.blurb": "Track ward patients, clinic lists, nursing shifts, and handoff notes.",
     "role.patient.blurb": "View upcoming visits, request appointments, and find doctors on duty.",
@@ -247,6 +274,29 @@
     "toast.failSwap": "Could not request swap."
   },
   "am": {
+    "signup.chooseRole": "ለመቀጠል ሚና ይምረጡ።",
+    "signup.roleDesc.admin": "ሰራተኞች፣ መርሃግብሮች እና ፈቃዶች",
+    "signup.roleDesc.nurse": "የዋርድ ሰሌዳ እና ፈረቃዎች",
+    "signup.roleDesc.doctor": "የክሊኒክ ሮስተር እና ታካሚዎች",
+    "signup.roleDesc.patient": "ቀጠሮዎችን ይያዙ እና ዝመናዎችን ይመልከቱ",
+    "forgot.footerLogin": "ወደ መግቢያ ተመለስ",
+    "forgot.footerBefore": "አስታውሰዋል? ",
+    "forgot.backLogin": "← ወደ መግቢያ ተመለስ",
+    "forgot.tooMany": "በጣም ብዙ ሙከራዎች። እባክዎ ጥቂት ደቂቃ ይጠብቁ።",
+    "forgot.invalid": "ያ ኢሜይል ትክክል አይመስልም። እባክዎ እንደገና ይሞክሩ።",
+    "forgot.empty": "እባክዎ ኢሜይልዎን ያስገቡ።",
+    "forgot.success": "መለያ ካለ፣ የዳግም ማስጀመሪያ አገናኝ ተልኳል። የገቢ መልእክትና ስፓም ይመልከቱ።",
+    "forgot.sending": "አገናኝ በመላክ ላይ…",
+    "forgot.submit": "የዳግም ማስጀመሪያ አገናኝ ላክ",
+    "forgot.email": "ኢሜይል",
+    "forgot.visualBody": "ኢሜይልዎን ያስገቡ — ደህንነቱ የተጠበቀ የዳግም ማስጀመሪያ አገናኝ እንልካለን፣ የይለፍ ቃል አይደለም።",
+    "forgot.visualTitleAfter": " መዳረሻዎን ዳግም ያስጀምሩ።",
+    "forgot.visualTitleEm": "ተሻለ እንክብካቤ",
+    "forgot.visualTitleBefore": "ወደ ",
+    "forgot.sub": "አዲስ የይለፍ ቃል ለመምረጥ አገናኝ በኢሜይል እንልክልዎታለን።",
+    "forgot.title": "የይለፍ ቃል ረሱ",
+    "login.failed": "መግባት አልተሳካም።",
+    "login.signedIn": "ገብተዋል። የስራ ቦታዎን በመክፈት ላይ…",
     "brand.hospital": "ሆስፒታል",
     "brand.workspace": "የስራ ቦታ",
     "lang.label": "ቋንቋ",
@@ -271,7 +321,7 @@
     "login.statSpecialists": "ስፔሻሊስቶች",
     "login.statTrust": "የታካሚ እምነት",
     "login.title": "እንኳን በደህና ተመለሱ",
-    "login.subHtml": "የሙከራ መለያ ይምረጡ — <strong>ሚናዎ በራስ-ሰር ይመደባል</strong>። የይለፍ ቃል፦ <strong>filfilu</strong>",
+    "login.subHtml": "ቀጠሮዎችን፣ መዝገቦችን እና የእንክብካቤ ጉዞዎን ለማስተዳደር ይግቡ።",
     "login.role": "የተመደበ ሚና",
     "login.roleHint": "ሚናው ከመለያው ጋር መመሳሰል አለበት። ለትክክለኛ ማዛመድ ከታች ያለውን የሙከራ ቺፕ ይጠቀሙ።",
     "login.email": "ኢሜይል",
@@ -287,7 +337,7 @@
     "login.roleAssigned": "ሚና ተመድቧውል፦ {label} ({via})። የሙያ የስራ ቦታዎን በመክፈት ላይ…",
     "login.viaApi": "API",
     "login.forgotMsg": "የይለፍ ቃል ዳግም ማስጀመር በቅርቡ ከስርዓቱ ጋር ይገናኛል። አዲስ ከሆኑ ተመዝገብን ይጠቀሙ።",
-    "login.googleMsg": "በGoogle መግባት በኡላ ከማረጋገጫ አቅራቢ ጋር ይገናኛል።",
+    "login.googleMsg": "ወደ Google በመሄድ ላይ…",
     "login.selected": "{label} ተመርጧል፦ {name}። ግባን ይጫኑ።",
     "login.roleOpt.admin": "አስተዳዳሪ",
     "login.roleOpt.doctor": "ሁኪም",
@@ -309,6 +359,10 @@
     "signup.passwordPh": "የይለፍ ቃል ይፍጠሩ",
     "signup.terms": "የFilfilu የእንክብካቤ ውሎችንና የግላዊነት ማስታወቂያን እቀበላለሁ።",
     "signup.submit": "መለያ ፍጠር",
+    "signup.google": "በGoogle ቀጥል",
+    "signup.googleMsg": "በGoogle በመቀጠል ላይ…",
+    "signup.googleNeedRole": "ከGoogle ጋር ከመቀጠልዎ በፊት ሚና ይምረጡ።",
+    "signup.googleNeedTerms": "ከGoogle ጋር ከመቀጠልዎ በፊት የእንክብካቤ ውሎችን ይቀበሉ።",
     "signup.footerBefore": "መለያ አለዎት? ",
     "signup.creating": "መለያዎን በመፍጠር ላይ…",
     "signup.welcome": "እንኳን ደህና መጡ፣ {first}! የ{label} ሚና ተመድቧውል። የስራ ቦታዎን በመክፈት ላይ…",
@@ -483,6 +537,29 @@
     "toast.failSwap": "ልውውጥ መጠየቅ አልተቻለም።"
   },
   "om": {
+    "signup.chooseRole": "Itti fufuuf gahee filadhu.",
+    "signup.roleDesc.admin": "Hojjettoota, sagantaa fi mirkaneessa",
+    "signup.roleDesc.nurse": "Gabatee wardii fi cilaaqa",
+    "signup.roleDesc.doctor": "Roster kilinikaa fi dhukkubsatoota",
+    "signup.roleDesc.patient": "Daawwannaa fi odeeffannoo kunuunsa",
+    "forgot.footerLogin": "Gara seensatti deebi’i",
+    "forgot.footerBefore": "Yaadatteetta? ",
+    "forgot.backLogin": "← Gara seensatti deebi’i",
+    "forgot.tooMany": "Yaaliin baay’ee. Maaloo daqiiqaa muraasa eegi.",
+    "forgot.invalid": "Email sun sirrii hin fakkaatu. Maaloo irra deebi’i.",
+    "forgot.empty": "Maaloo email kee galchi.",
+    "forgot.success": "Akkaawuntii yoo jiraate, linkiin deebisuu ergameera. Inbox fi spam ilaali.",
+    "forgot.sending": "Linkii erguu…",
+    "forgot.submit": "Linkii deebisuu ergi",
+    "forgot.email": "Imeelii",
+    "forgot.visualBody": "Email kee galchi — linkii nageenya qabu ni erginna, jecha iccitii miti.",
+    "forgot.visualTitleAfter": " deebisuu.",
+    "forgot.visualTitleEm": "kunuunsa fooyya’aa",
+    "forgot.visualTitleBefore": "Gara ",
+    "forgot.sub": "Jecha iccitii haaraa filattuuf linkiin emailiin ni ergamna.",
+    "forgot.title": "Jecha iccitii dagatte",
+    "login.failed": "Seenun hin milkoofne.",
+    "login.signedIn": "Seenteetta. Workspace kee banuu…",
     "brand.hospital": "HOSPITALA",
     "brand.workspace": "WORKSPACE",
     "lang.label": "Afaan",
@@ -507,7 +584,7 @@
     "login.statSpecialists": "Ogeeyyii",
     "login.statTrust": "Amantaa dhukkubsataa",
     "login.title": "Baga nagaan deebitan",
-    "login.subHtml": "Herrega agarsiisaa filadhaa — gaheen keessan ofumaan ramadama. Jecha iccitii: filfilu",
+    "login.subHtml": "Beellama, galmee fi imala kunuunsa kee bulchuuf seentaa.",
     "login.role": "Gahee ramadame",
     "login.roleHint": "Gaheen herrega waliin wal simuu qaba. Chip armaan gadii fayyadami.",
     "login.email": "Imeelii",
@@ -523,7 +600,7 @@
     "login.roleAssigned": "Gaheen ramadame: {label} ({via}). Workspace keessan banamaa jira…",
     "login.viaApi": "API",
     "login.forgotMsg": "Jecha iccitii deebisuu booda ni qunnamti. Haaraa yoo taate Galmaayi fayyadami.",
-    "login.googleMsg": "Google tiin seenuun booda ni qunnamti.",
+    "login.googleMsg": "Gara Googletti geessaa jira…",
     "login.selected": "{label} filatame: {name}. Seeni cuqaasi.",
     "login.roleOpt.admin": "Bulchaa",
     "login.roleOpt.doctor": "Doktora",
@@ -545,6 +622,10 @@
     "signup.passwordPh": "Jecha iccitii uumi",
     "signup.terms": "Haala kunuunsaa Filfilu fi beeksisa dhuunfaa nan fudha.",
     "signup.submit": "Herrega uumi",
+    "signup.google": "Google tiin itti fufi",
+    "signup.googleMsg": "Google tiin itti fufaa jira…",
+    "signup.googleNeedRole": "Google tiin itti fufuu dura gahee filadhu.",
+    "signup.googleNeedTerms": "Google tiin itti fufuu dura haala kunuunsaa fudhu.",
     "signup.footerBefore": "Herrega qabdaa? ",
     "signup.creating": "Herrega keessan uumaa jira…",
     "signup.welcome": "Baga nagaan dhufte, {first}! Gaheen {label} ramadame. Workspace banamaa jira…",
@@ -766,6 +847,7 @@
   }
   function mountSwitcher(container, opts) {
     if (!container) return null;
+    container.innerHTML = "";
     const compact = opts && opts.compact;
     const wrap = document.createElement("label");
     wrap.className = "lang-switch" + (compact ? " compact" : "");
@@ -778,13 +860,20 @@
     select.value = getLang();
     select.addEventListener("change", () => setLang(select.value));
     container.appendChild(wrap);
+    apply(document);
     return wrap;
   }
   function injectStyles() {
     if (document.getElementById("filfilu-i18n-styles")) return;
     const style = document.createElement("style");
     style.id = "filfilu-i18n-styles";
-    style.textContent = ".lang-switch{display:inline-flex;align-items:center;gap:.45rem;font-size:.78rem;font-weight:700;color:var(--muted,#4F6280)}.lang-switch select{appearance:none;border:1px solid var(--line,#E3EBF5);background:var(--glass,#fff);color:var(--navy,#0B2447);border-radius:999px;padding:.4rem .85rem;font:inherit;font-weight:700;cursor:pointer;min-width:7.2rem}.lang-switch.compact .lang-switch-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.panel-top .lang-switch,.header-actions .lang-switch,.top-actions .lang-switch{margin-right:.25rem}";
+    style.textContent = [
+      ".lang-switch{display:inline-flex;align-items:center;gap:.45rem;font-size:.78rem;font-weight:700;color:var(--muted,#4F6280)}",
+      ".lang-switch select{appearance:none;border:1px solid var(--line,#E3EBF5);background:var(--panel,#FFFFFF);color:var(--navy,#0B2447);border-radius:999px;padding:.4rem .85rem;font:inherit;font-weight:700;cursor:pointer;min-width:7.2rem}",
+      ".lang-switch select option{background:var(--panel,#FFFFFF);color:var(--navy,#0B2447)}",
+      ".lang-switch.compact .lang-switch-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}",
+      ".panel-top .lang-switch,.header-actions .lang-switch,.top-actions .lang-switch{margin-right:.25rem}",
+    ].join("");
     document.head.appendChild(style);
   }
   document.documentElement.lang = getLang();

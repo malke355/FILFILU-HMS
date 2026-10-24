@@ -4,7 +4,12 @@
  */
 (function (global) {
   const SESSION_KEY = "filfilu.session";
-  const API_BASE = (global.FILFILU_API_BASE || "http://127.0.0.1:4000/api").replace(/\/$/, "");
+  const API_BASE = (
+    global.FILFILU_API_BASE ||
+    (typeof location !== "undefined" && location.origin && location.protocol !== "file:"
+      ? `${location.origin}/api`
+      : "http://127.0.0.1:8080/api")
+  ).replace(/\/$/, "");
 
   /** @typedef {"admin"|"doctor"|"nurse"|"patient"} Role */
 
@@ -14,7 +19,7 @@
       short: "Admin",
       accent: "#1D6FE0",
       greeting: "Hospital operations command center",
-      blurb: "Manage staff, publish duty schedules, approve exchanges, and monitor hospital-wide activity.",
+      blurb: "Set up users and roles, publish rosters, oversee appointments, and keep the system safe — not clinical charting.",
     },
     doctor: {
       label: "Doctor",
@@ -271,12 +276,19 @@
   }
 
   async function api(path, options = {}) {
-    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+    const headers = { ...(options.headers || {}) };
+    if (options.body != null && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
     const session = readSession();
-    if (session?.token && !headers.Authorization) {
+    if (session?.token && session.token !== "cookie" && !headers.Authorization) {
       headers.Authorization = `Bearer ${session.token}`;
     }
-    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
     let body = null;
     try {
       body = await res.json();
@@ -295,8 +307,43 @@
   let cachedStats = null;
   let cachedActivity = [];
 
+  async function restoreSessionFromCookie() {
+    try {
+      const body = await api("/auth/me");
+      if (!body?.user) return null;
+      const session = toSession(body.user, "cookie");
+      session.cookieAuth = true;
+      writeSession(session);
+      return session;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Start Google OAuth.
+   * @param {{ intent?: "login"|"signup", role?: string }} [opts]
+   * - login: only existing Filfilu accounts
+   * - signup: create account for new Google email (role defaults to patient)
+   */
+  function beginGoogleSignIn(opts = {}) {
+    const intent = opts.intent === "signup" ? "signup" : "login";
+    const params = new URLSearchParams({ intent });
+    if (intent === "signup" && opts.role) params.set("role", opts.role);
+    location.href = `${API_BASE}/auth/google?${params}`;
+  }
+
+  async function logout() {
+    try {
+      await api("/auth/logout", { method: "POST", body: "{}" });
+    } catch {
+      /* ignore network errors — still clear local session */
+    }
+    clearSession();
+  }
+
   async function hydrateFromApi(session) {
-    if (!session?.token) return session;
+    if (!session?.token && !session?.cookieAuth) return session;
     const [staff, patients, appointments, shifts, exchanges, notifications, doctors, schedules, stats, activity] =
       await Promise.all([
         api("/staff").catch(() => null),
@@ -393,13 +440,52 @@
     return body;
   }
 
-  async function updateAppointmentStatus(id, status) {
+  async function updateAppointmentStatus(id, patch) {
+    const payload = typeof patch === "string" ? { status: patch } : patch;
     const body = await api(`/appointments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  async function respondToExchange(id, status) {
+    const body = await api(`/exchanges/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
     });
     await hydrateFromApi(readSession());
     return body;
+  }
+
+  async function updateStaff(id, patch) {
+    const body = await api(`/staff/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  async function cleanupDuplicateAppointments() {
+    const body = await api("/appointments/cleanup-duplicates", {
+      method: "POST",
+      body: "{}",
+    });
+    await hydrateFromApi(readSession());
+    return body;
+  }
+
+  function findDuplicateAppointmentGroups(session) {
+    const rows = rls.appointments(session).filter((a) => a.status === "requested" || a.status === "confirmed");
+    const groups = new Map();
+    for (const a of rows) {
+      const key = [a.patientId, a.doctorId, a.date, a.time, a.reason || "", a.status].join("|");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(a);
+    }
+    return [...groups.values()].filter((g) => g.length > 1);
   }
 
   function loginLocal({ email, password, role }) {
@@ -456,7 +542,7 @@
       // Full-stack product: API must be reachable (no silent offline login).
       return {
         ok: false,
-        error: err.message || "Cannot reach Filfilu API. Start the backend on :4000, then try again.",
+        error: err.message || "Cannot reach the Filfilu API on this site. Start the app, then try again.",
       };
     }
   }
@@ -504,7 +590,7 @@
       }
       return {
         ok: false,
-        error: err.message || "Cannot reach Filfilu API. Start the backend on :4000, then try again.",
+        error: err.message || "Cannot reach the Filfilu API on this site. Start the app, then try again.",
       };
     }
   }
@@ -519,7 +605,8 @@
 
   function requireAuth() {
     const session = readSession();
-    if (!session || !normalizeRole(session.role) || !session.token) {
+    const hasAuth = session && normalizeRole(session.role) && (session.token || session.cookieAuth);
+    if (!hasAuth) {
       clearSession();
       location.href = "login.html";
       return null;
@@ -533,8 +620,21 @@
   }
 
   async function bootWorkspace() {
-    const session = requireAuth();
-    if (!session) return null;
+    let session = readSession();
+    if (!session?.token && !session?.cookieAuth) {
+      session = await restoreSessionFromCookie();
+    }
+    if (!session || !normalizeRole(session.role)) {
+      clearSession();
+      location.href = "login.html";
+      return null;
+    }
+    session.meta = ROLE_META[session.role];
+    session.permissions = (session.permissions && session.permissions.length
+      ? session.permissions
+      : PERMISSIONS[session.role]
+    ).slice();
+    writeSession(session);
     try {
       await hydrateFromApi(session);
       return readSession();
@@ -588,7 +688,10 @@
     },
     shifts(session) {
       if (can(session, "schedule:read") || can(session, "schedule:write")) return DB.shifts;
-      if (can(session, "schedule:read_own")) return DB.shifts.filter((s) => s.staffId === session.staffId);
+      if (can(session, "schedule:read_own")) {
+        // Own roster only — drafts stay hidden until published.
+        return DB.shifts.filter((s) => s.staffId === session.staffId && s.status === "published");
+      }
       return [];
     },
     staff(session) {
@@ -709,6 +812,8 @@
     api,
     login,
     signup,
+    beginGoogleSignIn,
+    restoreSessionFromCookie,
     postContact,
     postBooking,
     hydrateFromApi,
@@ -719,7 +824,11 @@
     publishDraftShifts,
     requestExchange,
     updateAppointmentStatus,
-    logout: clearSession,
+    respondToExchange,
+    updateStaff,
+    cleanupDuplicateAppointments,
+    findDuplicateAppointmentGroups,
+    logout,
     session: readSession,
     requireAuth,
     can,
