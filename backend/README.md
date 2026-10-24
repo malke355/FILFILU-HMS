@@ -14,7 +14,7 @@ npm run db:seed
 npm run dev
 ```
 
-API: **http://127.0.0.1:4000**
+App: **http://127.0.0.1:8080/login.html** (UI and `/api` on the same port)
 
 Demo password for all seeded users: `filfilu`
 
@@ -59,18 +59,11 @@ Demo password for all seeded users: `filfilu`
 
 ## Product frontend
 
-The real product UI is the landing app:
+The API serves the landing pages. One process is the whole product:
 
 - http://127.0.0.1:8080/login.html
-- Workspace: `landing/app.html` (JWT session required)
-
-```bash
-# terminal 1
-cd backend && npm run dev
-
-# terminal 2
-cd landing && python3 -m http.server 8080 --bind 0.0.0.0
-```
+- Workspace: http://127.0.0.1:8080/app.html (JWT session required)
+- Health: http://127.0.0.1:8080/api/health
 
 ## CORS
 
@@ -149,7 +142,7 @@ Protected API routes accept either the session cookie or `Authorization: Bearer 
 
 | Command | Purpose |
 |---------|---------|
-| `npm run dev` | tsx watch on `:4000` |
+| `npm run dev` | tsx watch on `:8080` (UI + API) |
 | `npm run build` / `start` | Compile + run `dist` |
 | `npm run db:push` | Sync Prisma schema to SQLite |
 | `npm run db:seed` | Load demo data |
