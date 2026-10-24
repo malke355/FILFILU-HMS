@@ -24,6 +24,64 @@ router.get("/staff", requirePermission("staff:read", "schedule:read_own"), async
   }
 });
 
+/** Admin: update staff role/department/status (deactivate instead of delete). */
+router.patch("/staff/:id", requirePermission("staff:write"), async (req: AuthedRequest, res, next) => {
+  try {
+    const id = String(req.params.id);
+    const body = z.object({
+      role: z.string().min(1).optional(),
+      dept: z.string().min(1).optional(),
+      ward: z.string().nullable().optional(),
+      phone: z.string().nullable().optional(),
+      status: z.enum(["active", "inactive"]).optional(),
+      name: z.string().min(1).optional(),
+    }).parse(req.body);
+
+    if (req.user!.staffId && req.user!.staffId === id && body.status === "inactive") {
+      return res.status(400).json({ error: "You cannot deactivate your own staff account." });
+    }
+
+    const existing = await prisma.staff.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: "Staff not found." });
+
+    const row = await prisma.staff.update({
+      where: { id },
+      data: {
+        ...(body.role ? { role: body.role } : {}),
+        ...(body.dept ? { dept: body.dept } : {}),
+        ...(body.ward !== undefined ? { ward: body.ward } : {}),
+        ...(body.phone !== undefined ? { phone: body.phone } : {}),
+        ...(body.status ? { status: body.status } : {}),
+        ...(body.name ? { name: body.name } : {}),
+      },
+    });
+
+    // Keep linked user role/dept in sync when staff assignment changes.
+    if (body.role || body.dept || body.ward !== undefined) {
+      await prisma.user.updateMany({
+        where: { staffId: id },
+        data: {
+          ...(body.role ? { role: body.role } : {}),
+          ...(body.dept ? { dept: body.dept } : {}),
+          ...(body.ward !== undefined ? { ward: body.ward } : {}),
+        },
+      });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.user!.sub,
+        action: body.status === "inactive" ? "staff.deactivate" : body.status === "active" ? "staff.reactivate" : "staff.update",
+        entity: row.id,
+        metaJson: JSON.stringify(body),
+      },
+    });
+    res.json({ data: row });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/patients", async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
@@ -115,10 +173,16 @@ router.post("/appointments", async (req: AuthedRequest, res, next) => {
 router.get("/shifts", async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
-    let where = {};
-    if (can(u.role, "schedule:read") || can(u.role, "schedule:write")) where = {};
-    else if (can(u.role, "schedule:read_own")) where = { staffId: u.staffId ?? "__none__" };
-    else return res.status(403).json({ error: "Missing permission." });
+    let where: Record<string, unknown> = {};
+    if (can(u.role, "schedule:read") || can(u.role, "schedule:write")) {
+      // Admin / schedulers see drafts + published.
+      where = {};
+    } else if (can(u.role, "schedule:read_own")) {
+      // Doctors/nurses only see their own published roster (drafts stay hidden).
+      where = { staffId: u.staffId ?? "__none__", status: "published" };
+    } else {
+      return res.status(403).json({ error: "Missing permission." });
+    }
 
     const rows = await prisma.shift.findMany({
       where,
@@ -184,6 +248,19 @@ router.post("/exchanges", requirePermission("exchanges:request"), async (req: Au
     if (body.toStaffId === u.staffId) {
       return res.status(400).json({ error: "Cannot request a swap with yourself." });
     }
+    const [fromStaff, toStaff] = await Promise.all([
+      prisma.staff.findUnique({ where: { id: u.staffId } }),
+      prisma.staff.findUnique({ where: { id: body.toStaffId } }),
+    ]);
+    if (!toStaff || toStaff.status !== "active") {
+      return res.status(400).json({ error: "Colleague not found or inactive." });
+    }
+    if (fromStaff && toStaff.role !== fromStaff.role) {
+      return res.status(400).json({ error: "Swaps must be with the same role." });
+    }
+    if (fromStaff?.dept && toStaff.dept && fromStaff.dept !== toStaff.dept) {
+      return res.status(400).json({ error: "Swaps must stay within the same department." });
+    }
     const row = await prisma.exchange.create({
       data: {
         fromStaffId: u.staffId,
@@ -208,16 +285,52 @@ router.patch("/exchanges/:id", requirePermission("exchanges:approve", "exchanges
       status: z.enum(["pending_peer", "peer_accepted", "pending_admin", "approved", "denied"]),
     }).parse(req.body);
     const u = req.user!;
-    if (["approved", "denied"].includes(body.status) && !can(u.role, "exchanges:approve")) {
-      return res.status(403).json({ error: "Only admin can approve/deny." });
-    }
     const id = String(req.params.id);
+    const existing = await prisma.exchange.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: "Exchange not found." });
+
+    const isAdmin = can(u.role, "exchanges:approve");
+    const isPeer = existing.toStaffId === u.staffId;
+    const isRequester = existing.fromStaffId === u.staffId;
+
+    // Doctors cannot approve their own swap / leave — only the peer or admin acts.
+    if (isRequester && !isAdmin) {
+      return res.status(403).json({ error: "You cannot approve or decide your own swap request." });
+    }
+
+    let nextStatus = body.status;
+    if (["approved", "denied"].includes(nextStatus)) {
+      if (isAdmin) {
+        /* final admin decision */
+      } else if (isPeer && existing.status === "pending_peer" && nextStatus === "denied") {
+        /* peer declines the swap */
+      } else {
+        return res.status(403).json({ error: "Only admin can give the final approve/deny." });
+      }
+    } else if (["peer_accepted", "pending_admin"].includes(nextStatus)) {
+      if (!isPeer && !isAdmin) {
+        return res.status(403).json({ error: "Only the requested colleague can accept this swap." });
+      }
+      if (existing.status !== "pending_peer" && !isAdmin) {
+        return res.status(400).json({ error: "Swap is not waiting on peer response." });
+      }
+      // Peer accept moves the request to admin review.
+      if (nextStatus === "peer_accepted") nextStatus = "pending_admin";
+    } else if (!isAdmin) {
+      return res.status(403).json({ error: "Missing permission." });
+    }
+
     const row = await prisma.exchange.update({
       where: { id },
-      data: { status: body.status },
+      data: { status: nextStatus },
     });
     await prisma.auditLog.create({
-      data: { actorId: u.sub, action: "exchange.update", entity: row.id, metaJson: JSON.stringify(body) },
+      data: {
+        actorId: u.sub,
+        action: "exchange.update",
+        entity: row.id,
+        metaJson: JSON.stringify({ ...body, status: nextStatus }),
+      },
     });
     res.json({ data: row });
   } catch (err) {
@@ -274,26 +387,94 @@ router.patch("/appointments/:id", async (req: AuthedRequest, res, next) => {
     const u = req.user!;
     const id = String(req.params.id);
     const body = z.object({
-      status: z.enum(["draft", "requested", "confirmed", "cancelled", "completed"]),
+      status: z.enum(["draft", "requested", "confirmed", "cancelled", "completed", "no_show"]).optional(),
+      date: z.string().optional(),
+      time: z.string().optional(),
+      reason: z.string().optional(),
+      doctorId: z.string().optional(),
+      dept: z.string().optional(),
     }).parse(req.body);
 
     const existing = await prisma.appointment.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: "Appointment not found." });
 
-    const allowed =
-      can(u.role, "appointments:manage") ||
-      (u.role === "doctor" && existing.doctorId === u.staffId) ||
-      (u.role === "patient" && existing.patientId === u.patientId && body.status === "cancelled");
+    const isAdminOps = can(u.role, "appointments:manage");
+    const isDoctorOwner = u.role === "doctor" && existing.doctorId === u.staffId;
+    const isPatientCancel =
+      u.role === "patient" &&
+      existing.patientId === u.patientId &&
+      body.status === "cancelled" &&
+      !body.date &&
+      !body.time &&
+      !body.doctorId;
+    const allowed = isAdminOps || isDoctorOwner || isPatientCancel;
     if (!allowed) return res.status(403).json({ error: "Missing permission." });
+
+    // Admins run the system: cancel / reassign only — not clinical confirm/complete/no-show.
+    if (isAdminOps && !isDoctorOwner && body.status && !["cancelled", "draft"].includes(body.status)) {
+      return res.status(403).json({
+        error: "Admins cannot change clinical appointment status. Cancel or reassign instead.",
+      });
+    }
+
+    if (body.doctorId && isAdminOps) {
+      const doctor = await prisma.staff.findUnique({ where: { id: body.doctorId } });
+      if (!doctor || doctor.role !== "doctor" || doctor.status !== "active") {
+        return res.status(400).json({ error: "Reassign target must be an active doctor." });
+      }
+    }
 
     const row = await prisma.appointment.update({
       where: { id },
-      data: { status: body.status },
+      data: {
+        ...(body.status ? { status: body.status } : {}),
+        ...(body.date ? { date: body.date } : {}),
+        ...(body.time ? { time: body.time } : {}),
+        ...(body.reason !== undefined ? { reason: body.reason } : {}),
+        ...(body.doctorId ? { doctorId: body.doctorId } : {}),
+        ...(body.dept ? { dept: body.dept } : {}),
+      },
     });
     await prisma.auditLog.create({
       data: { actorId: u.sub, action: "appointment.update", entity: row.id, metaJson: JSON.stringify(body) },
     });
     res.json({ data: row });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Admin: cancel duplicate appointment requests (same patient/doctor/date/time/reason),
+ * keeping the oldest row in each group.
+ */
+router.post("/appointments/cleanup-duplicates", requirePermission("appointments:manage"), async (req: AuthedRequest, res, next) => {
+  try {
+    const rows = await prisma.appointment.findMany({
+      where: { status: { in: ["requested", "confirmed"] } },
+      orderBy: { createdAt: "asc" },
+    });
+    const seen = new Map<string, string>();
+    const cancelIds: string[] = [];
+    for (const row of rows) {
+      const key = [row.patientId, row.doctorId, row.date, row.time, row.reason || "", row.status].join("|");
+      if (seen.has(key)) cancelIds.push(row.id);
+      else seen.set(key, row.id);
+    }
+    if (cancelIds.length) {
+      await prisma.appointment.updateMany({
+        where: { id: { in: cancelIds } },
+        data: { status: "cancelled" },
+      });
+      await prisma.auditLog.create({
+        data: {
+          actorId: req.user!.sub,
+          action: "appointment.cleanup_duplicates",
+          metaJson: JSON.stringify({ cancelled: cancelIds.length, ids: cancelIds }),
+        },
+      });
+    }
+    res.json({ data: { cancelled: cancelIds.length, kept: seen.size } });
   } catch (err) {
     next(err);
   }

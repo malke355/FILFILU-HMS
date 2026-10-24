@@ -82,6 +82,8 @@ Components do **not** mutate global mock arrays; all reads/writes go through ser
 
 `npm run dev` inside `backend/` serves the landing pages and `/api` on that same port. Login calls `/api` on the page’s own host, so a second terminal is not required. See [`backend/README.md`](backend/README.md).
 
+**Google Sign-In:** the landing **Sign in with Google** button uses Express OAuth (`openid email profile`). Setup steps and redirect URIs are in [`backend/README.md`](backend/README.md#google-sign-in-oauth-20--openid-connect).
+
 Still out of scope for later: PostgreSQL RLS, EMR/billing modules, email/SMS delivery.
 
 ## License
