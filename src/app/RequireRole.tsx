@@ -19,11 +19,11 @@ export function RequireRole({
   if (!roles.includes(session.role)) {
     return (
       <EmptyState
-        title="Role not permitted in this demo view"
-        description={`Signed in as ${session.role}. Switch roles from the demo banner.`}
+        title="This page isn't available for your role"
+        description={`You're signed in as ${session.role}. Sign in with a different role to continue.`}
         action={
-          <Link to="/">
-            <Button variant="outline">Home</Button>
+          <Link to="/login">
+            <Button variant="outline">Switch role</Button>
           </Link>
         }
       />
