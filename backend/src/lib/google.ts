@@ -17,6 +17,26 @@ function requireEnv(name: string): string {
   return v;
 }
 
+function clockSkewSeconds() {
+  const skew = Number(process.env.GOOGLE_CLOCK_TOLERANCE_SEC || 86400);
+  return Number.isFinite(skew) && skew >= 0 ? skew : 86400;
+}
+
+/**
+ * google-auth-library v10+ hardcodes CLOCK_SKEW_SECS_ = 300 and ignores
+ * `client.clockTolerance`. Windows demo clocks are often hours off, which
+ * surfaces as "Token used too late" with a raw JWT dump. Widen skew for local use.
+ */
+function applyLibraryClockSkew() {
+  const skew = clockSkewSeconds();
+  const ctor = OAuth2Client as unknown as { CLOCK_SKEW_SECS_?: number };
+  if (typeof ctor.CLOCK_SKEW_SECS_ === "number") {
+    ctor.CLOCK_SKEW_SECS_ = skew;
+  }
+}
+
+applyLibraryClockSkew();
+
 export function googleConfigured() {
   return Boolean(
     process.env.GOOGLE_CLIENT_ID?.trim() &&
@@ -26,16 +46,11 @@ export function googleConfigured() {
 }
 
 export function createGoogleClient() {
-  const client = new OAuth2Client(
+  return new OAuth2Client(
     requireEnv("GOOGLE_CLIENT_ID"),
     requireEnv("GOOGLE_CLIENT_SECRET"),
     requireEnv("GOOGLE_REDIRECT_URI"),
   );
-  // Windows/dev clocks are often skewed; Google rejects ID tokens when local time
-  // is past `exp` ("Token used too late"). Allow a generous skew for local demos.
-  const skew = Number(process.env.GOOGLE_CLOCK_TOLERANCE_SEC || 86400);
-  client.clockTolerance = Number.isFinite(skew) && skew >= 0 ? skew : 86400;
-  return client;
 }
 
 /** User-facing Google auth errors (never dump JWT payloads into the UI). */
@@ -47,10 +62,10 @@ export function friendlyGoogleError(err: unknown): string {
   if (/No Filfilu account found/i.test(message)) {
     return message;
   }
-  if (/Wrong recipient|audience|invalid token|jwt/i.test(message) || message.includes("{")) {
+  if (/Wrong recipient|audience|invalid token|jwt/i.test(message) || message.includes("{") || message.includes("iat")) {
     return "Google sign-in failed. Please try again.";
   }
-  if (message.length > 180) return "Google sign-in failed. Please try again.";
+  if (message.length > 160) return "Google sign-in failed. Please try again.";
   return message;
 }
 
@@ -71,6 +86,7 @@ export function newOAuthState() {
 
 /** Exchange code, then verify the ID token with google-auth-library. */
 export async function exchangeCodeAndVerify(code: string): Promise<GoogleProfile> {
+  applyLibraryClockSkew();
   const client = createGoogleClient();
   const clientId = requireEnv("GOOGLE_CLIENT_ID");
   const { tokens } = await client.getToken(code);

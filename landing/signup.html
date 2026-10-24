@@ -330,7 +330,13 @@
       const msg = document.getElementById("msg");
       const showMsg = (text) => { msg.textContent = text; msg.classList.add("show"); };
       if (oauthError) {
-        showMsg(oauthError);
+        const safe =
+          /Token used too (late|early)/i.test(oauthError)
+            ? "Your computer’s date & time is out of sync with Google. Turn on automatic time in Windows settings, then try again."
+            : /[{"]iat["']|accounts\.google\.com|invalid token/i.test(oauthError) || oauthError.length > 180
+              ? "Google sign-in failed. Please try again."
+              : oauthError;
+        showMsg(safe);
         params.delete("error");
         const clean = `${location.pathname}${params.toString() ? `?${params}` : ""}${location.hash}`;
         history.replaceState({}, "", clean);
