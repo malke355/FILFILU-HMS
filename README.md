@@ -4,8 +4,30 @@ Hospital Duty Schedule Management System — **Express API + landing UI** on one
 
 ## Quick start
 
+PostgreSQL is configured only via `backend/.env` (never commit `.env`).
+
+Current working local setup (Docker):
+
+| Setting | Value |
+|---------|--------|
+| Host | `localhost` |
+| Port | `5434` (Windows PostgreSQL already uses `5433`) |
+| Database | `hms` |
+| User | `postgres` |
+| Password | see `backend/.env` (`PGPASSWORD`) |
+
+### 1. Start the database
+
 ```bash
 cd backend
+# Docker Desktop must be running
+$env:HMS_PG_PORT=5434
+docker compose -f docker-compose.hms.yml up -d
+```
+
+### 2. Run the API
+
+```bash
 npm install
 npm run db:generate
 npm run db:push
@@ -13,9 +35,14 @@ npm run db:seed
 npm run dev
 ```
 
-Open **http://127.0.0.1:8080/login** (or `/login.html`).
+On startup the app creates tables if missing: `users`, `patients`, `doctors`, `appointments`, `medical_records`, `bills`.
 
-Demo password for every seeded account: `filfilu`
+- App: **http://127.0.0.1:8080/login**
+- Health: **http://127.0.0.1:8080/api/health**
+
+### pgAdmin
+
+New server → Host `127.0.0.1`, Port **`5434`**, Database `hms`, User `postgres`, Password from `.env`.
 
 | Email | Role |
 |-------|------|

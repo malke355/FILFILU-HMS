@@ -1,0 +1,24 @@
+# HMS PostgreSQL — matches .env credentials
+# Default publishes 5433. If Windows PostgreSQL already owns 5433, use:
+#   $env:HMS_PG_PORT=5434; docker compose -f docker-compose.hms.yml up -d
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: filfilu-hms-pg
+    restart: unless-stopped
+    ports:
+      - "${HMS_PG_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "12345678"
+      POSTGRES_DB: hms
+    volumes:
+      - filfilu_hms_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hms"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  filfilu_hms_pgdata:
