@@ -4,35 +4,45 @@ Hospital Duty Schedule Management System — **Express API + landing UI** on one
 
 ## Quick start
 
-PostgreSQL connection is read from `backend/.env` (never commit `.env`):
+PostgreSQL is configured only via `backend/.env` (never commit `.env`).
 
-- Host `localhost`, port `5433`, database `hms`, user `postgres`
+Current working local setup (Docker):
+
+| Setting | Value |
+|---------|--------|
+| Host | `localhost` |
+| Port | `5434` (Windows PostgreSQL already uses `5433`) |
+| Database | `hms` |
+| User | `postgres` |
+| Password | see `backend/.env` (`PGPASSWORD`) |
 
 ### 1. Start the database
 
-**Option A — Docker (recommended if Windows Postgres password is unknown):**
-
-1. Stop Windows service **postgresql-x64-18** (Services app) so port **5433** is free.
-2. Start Docker Desktop, then:
-
 ```bash
 cd backend
+# Docker Desktop must be running
+$env:HMS_PG_PORT=5434
 docker compose -f docker-compose.hms.yml up -d
 ```
-
-**Option B — Windows PostgreSQL 18:** set the `postgres` user password to match `.env`, create database `hms`, keep service running on port 5433.
 
 ### 2. Run the API
 
 ```bash
-cd backend
 npm install
+npm run db:generate
+npm run db:push
+npm run db:seed
 npm run dev
 ```
 
 On startup the app creates tables if missing: `users`, `patients`, `doctors`, `appointments`, `medical_records`, `bills`.
 
-Open **http://127.0.0.1:8080/login** · health: **http://127.0.0.1:8080/api/health**
+- App: **http://127.0.0.1:8080/login**
+- Health: **http://127.0.0.1:8080/api/health**
+
+### pgAdmin
+
+New server → Host `127.0.0.1`, Port **`5434`**, Database `hms`, User `postgres`, Password from `.env`.
 
 | Email | Role |
 |-------|------|
