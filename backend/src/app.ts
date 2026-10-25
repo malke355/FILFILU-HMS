@@ -58,6 +58,13 @@ export function createApp() {
   app.use("/api", contactRoutes);
   app.use("/api", resourceRoutes);
 
+  // Clean URLs → landing HTML (e.g. /signup → signup.html)
+  for (const page of ["login", "signup", "app", "forgot-password"] as const) {
+    app.get(`/${page}`, (_req, res) => {
+      res.sendFile(path.join(landingDir, `${page}.html`));
+    });
+  }
+
   app.use(express.static(landingDir));
 
   app.use(notFound);

@@ -21,27 +21,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-        env:
-          GITHUB_PAGES: 'true'
-
-      - name: SPA fallback for client routes
-        run: cp dist/index.html dist/404.html
-
-      - name: Upload Pages artifact
+      - name: Upload landing (static UI)
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: landing
 
   deploy:
     needs: build

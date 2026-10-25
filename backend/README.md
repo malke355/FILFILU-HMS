@@ -67,7 +67,7 @@ The API serves the landing pages. One process is the whole product:
 
 ## CORS
 
-`.env` `CORS_ORIGIN` allows landing (`:8080`) and Vite (`:5173`).
+`.env` `CORS_ORIGIN` allows the landing origin (`:8080`).
 
 ## Google Sign-In (OAuth 2.0 / OpenID Connect)
 
@@ -78,14 +78,14 @@ Uses the existing **Sign in with Google** button on `landing/login.html`. Stack:
 1. Create (or open) a project at [Google Cloud Console](https://console.cloud.google.com/).
 2. **APIs & Services → OAuth consent screen** → configure External (or Internal) app.
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**.
-4. Register these **Authorized redirect URIs** exactly:
+4. Register these **Authorized redirect URIs** exactly (must match `PORT` in `.env`):
 
 ```
-http://127.0.0.1:4000/api/auth/google/callback
-http://localhost:4000/api/auth/google/callback
+http://127.0.0.1:8080/api/auth/google/callback
+http://localhost:8080/api/auth/google/callback
 ```
 
-5. (Optional) Authorized JavaScript origins:
+5. Authorized JavaScript origins:
 
 ```
 http://127.0.0.1:8080
@@ -94,6 +94,8 @@ http://localhost:8080
 
 6. Copy the Client ID and Client Secret into `backend/.env`.
 
+> **Do not change `PORT` without also updating** `GOOGLE_REDIRECT_URI` in `.env` **and** the Authorized redirect URIs in Google Cloud Console. A mismatch causes `Error 400: redirect_uri_mismatch`.
+
 ### 2. Backend env
 
 ```bash
@@ -101,13 +103,14 @@ cd backend
 cp .env.example .env   # if needed
 ```
 
-Set:
+Set (all on the same port — UI + API):
 
 ```env
+PORT=8080
 FRONTEND_ORIGIN="http://127.0.0.1:8080"
 GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET="...."
-GOOGLE_REDIRECT_URI="http://127.0.0.1:4000/api/auth/google/callback"
+GOOGLE_REDIRECT_URI="http://127.0.0.1:8080/api/auth/google/callback"
 ```
 
 Then:
@@ -131,10 +134,10 @@ Protected API routes accept either the session cookie or `Authorization: Bearer 
 
 ### 4. Local test checklist
 
-1. Start API (`:4000`) and landing (`:8080`).
+1. Start the app: `cd backend && npm run dev` (UI + API on `:8080`).
 2. Open http://127.0.0.1:8080/login.html
 3. Click **Sign in with Google** → pick an account.
-4. You should land on `app.html` as a **patient** workspace (new Google users).
+4. You should land on `app.html` (new Google users from Sign Up; login needs an existing account).
 5. Click **Sign out** → cookie cleared, back to login.
 6. Cancel on Google’s screen → login shows a clear error message.
 
