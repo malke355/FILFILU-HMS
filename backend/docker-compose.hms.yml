@@ -1,0 +1,23 @@
+# Matches assignment/local settings: localhost:5433 / db hms / user postgres
+# Requires port 5433 free (stop Windows service "postgresql-x64-18" if it is using 5433).
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: filfilu-hms-pg
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "12345678"
+      POSTGRES_DB: hms
+    volumes:
+      - filfilu_hms_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hms"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  filfilu_hms_pgdata:

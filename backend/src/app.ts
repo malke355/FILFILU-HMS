@@ -7,6 +7,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import authRoutes from "./routes/auth.js";
 import contactRoutes from "./routes/contact.js";
+import hmsDbRoutes from "./routes/hmsDb.js";
 import publicRoutes from "./routes/public.js";
 import resourceRoutes from "./routes/resources.js";
 import { errorHandler, notFound } from "./middleware/error.js";
@@ -55,6 +56,8 @@ export function createApp() {
 
   app.use("/api", publicRoutes);
   app.use("/api/auth", authRoutes);
+  // SQL HMS tables (parameterized) — mounted before Prisma resource routes
+  app.use("/api", hmsDbRoutes);
   app.use("/api", contactRoutes);
   app.use("/api", resourceRoutes);
 

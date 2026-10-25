@@ -1,12 +1,33 @@
 import { Router } from "express";
+import { pool } from "../db/pool.js";
 import { prisma } from "../lib/prisma.js";
 import { can } from "../lib/rbac.js";
 import { optionalAuth, requireAuth, type AuthedRequest } from "../middleware/auth.js";
 
 const router = Router();
 
-router.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "filfilu-api", time: new Date().toISOString() });
+router.get("/health", async (_req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({
+      ok: true,
+      service: "filfilu-api",
+      database: "up",
+      host: process.env.PGHOST || "from DATABASE_URL",
+      port: process.env.PGPORT || "from DATABASE_URL",
+      name: process.env.PGDATABASE || "from DATABASE_URL",
+      time: new Date().toISOString(),
+    });
+  } catch {
+    res.status(503).json({
+      ok: false,
+      service: "filfilu-api",
+      database: "down",
+      error:
+        "Database unreachable. Check PostgreSQL is running and .env (PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD).",
+      time: new Date().toISOString(),
+    });
+  }
 });
 
 router.get("/departments", async (_req, res, next) => {
