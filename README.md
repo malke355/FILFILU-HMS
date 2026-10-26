@@ -25,13 +25,14 @@ $env:HMS_PG_PORT=5434
 docker compose -f docker-compose.hms.yml --env-file .env up -d
 ```
 
-### 2. Migrate, seed, run
+### 2. Migrate, seed (optional), run
 
 ```bash
 npm install
 npm run db:generate
 npm run db:deploy
-npm run db:seed
+# Destructive demo seed (wipes tables) — local only:
+$env:CONFIRM_SEED="YES"; npm run db:seed
 npm run dev
 ```
 
@@ -40,12 +41,14 @@ Schema changes go through **Prisma migrations** (`npm run db:migrate` locally, `
 - App: **http://127.0.0.1:8080/login**
 - Health: **http://127.0.0.1:8080/api/health**
 
-| Email | Role | Demo password |
-|-------|------|---------------|
-| admin@filfilu.com | admin | filfilu |
-| doctor@filfilu.com | doctor | filfilu |
-| nurse@filfilu.com | nurse | filfilu |
-| patient@filfilu.com | patient | filfilu |
+After a local demo seed (never for production), sample logins use password `filfilu`:
+
+| Email | Role |
+|-------|------|
+| admin@filfilu.com | admin |
+| doctor@filfilu.com | doctor |
+| nurse@filfilu.com | nurse |
+| patient@filfilu.com | patient |
 
 ## What’s in this repo
 

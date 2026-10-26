@@ -876,19 +876,21 @@
         const name = form.elements.name.value.trim();
         const department = form.elements.department.value;
         const date = form.elements.date.value;
-        let text = `${name}, your ${department} visit is requested for ${date}.`;
         try {
+          if (!API) throw new Error("Booking API is not available on this host.");
           const res = await postApi("/bookings", { name, department, date });
-          if (res?.message) text = res.message;
-        } catch {
-          /* offline: keep local confirmation */
+          form.hidden = true;
+          success.hidden = false;
+          document.getElementById("successText").textContent =
+            res?.message || `${name}, your ${department} visit is requested for ${date}.`;
+        } catch (err) {
+          success.hidden = true;
+          form.hidden = false;
+          alert(err.message || "Could not submit booking. Please try again.");
         }
-        form.hidden = true;
-        success.hidden = false;
-        document.getElementById("successText").textContent = text;
       });
 
-      /* Contact form → API (falls back to local confirmation) */
+      /* Contact form → API only (no fake success on failure) */
       const contactForm = document.getElementById("contactForm");
       const contactMsg = document.getElementById("contactMsg");
       contactForm.addEventListener("submit", async (e) => {
@@ -897,16 +899,15 @@
         const email = contactForm.elements.email.value.trim();
         const topic = contactForm.elements.topic.value;
         const message = contactForm.elements.message.value.trim();
-        let text = `Thanks, ${name}. Your message was recorded (demo).`;
-        try {
-          const res = await postApi("/contact", { name, email, topic, message });
-          if (res?.message) text = res.message;
-        } catch {
-          /* offline */
-        }
         contactMsg.style.display = "block";
-        contactMsg.textContent = text;
-        contactForm.reset();
+        try {
+          if (!API) throw new Error("Contact API is not available on this host.");
+          const res = await postApi("/contact", { name, email, topic, message });
+          contactMsg.textContent = res?.message || `Thanks, ${name}. Your message was recorded.`;
+          contactForm.reset();
+        } catch (err) {
+          contactMsg.textContent = err.message || "Could not send your message. Please try again.";
+        }
       });
 
       /* Nav active state while scrolling */

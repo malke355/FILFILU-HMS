@@ -292,6 +292,14 @@
       const t = (k, v) => I18n.t(k, v);
       const session = await Auth.bootWorkspace();
       if (!session) return;
+      if (session.hydrateWarning) {
+        const toast = document.getElementById("toast");
+        if (toast) {
+          toast.textContent = session.hydrateWarning;
+          toast.classList.add("show");
+          setTimeout(() => toast.classList.remove("show"), 6000);
+        }
+      }
 
       I18n.mountSwitcher(document.getElementById("langMount"), { compact: true });
 

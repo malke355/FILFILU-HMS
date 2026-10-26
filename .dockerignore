@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+**/backups
+**/*.log
+**/.git
+**/prisma/*.db
+**/prisma/*.db-journal
+**/.cursor
+**/agent-transcripts
+**/*.md
+!README.md
+!backend/README.md

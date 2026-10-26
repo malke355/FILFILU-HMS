@@ -24,6 +24,7 @@ const WEAK_SECRETS = new Set([
   "jwt-secret",
   "replace-with-a-long-random-secret",
   "replace-with-a-long-random-secret-at-least-32-chars",
+  "CHANGE_ME",
 ]);
 
 function secret() {

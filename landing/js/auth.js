@@ -1,6 +1,6 @@
 /**
  * Filfilu auth + RBAC + RLS.
- * Prefers the Phase-2 API (JWT); falls back to in-browser demo data if the API is offline.
+ * API-backed auth + RBAC. Workspace data comes only from the Express API (no offline demo seed).
  */
 (function (global) {
   const SESSION_KEY = "filfilu.session";
@@ -132,111 +132,20 @@
     }));
   }
 
-    const DB = {
-    users: [
-      { id: "u-admin", role: "admin", name: "Selam Bekele", email: "admin@filfilu.com", title: "Hospital Administrator" },
-      { id: "u-doc-1", role: "doctor", name: "Dr. Helen Tesfaye", email: "doctor@filfilu.com", staffId: "s-doc-1", dept: "General Medicine", title: "Consultant Physician" },
-      { id: "u-doc-2", role: "doctor", name: "Dr. Sara Mekonnen", email: "sara@filfilu.com", staffId: "s-doc-2", dept: "Cardiology", title: "Cardiologist" },
-      { id: "u-nurse-1", role: "nurse", name: "Rahel Abebe", email: "nurse@filfilu.com", staffId: "s-nurse-1", ward: "Ward A", dept: "Maternity", title: "Senior Nurse" },
-      { id: "u-pat-1", role: "patient", name: "Amina Mohammed", email: "patient@filfilu.com", patientId: "p-1", title: "Patient" },
-      { id: "u-pat-2", role: "patient", name: "Yonas Hailu", email: "yonas@filfilu.com", patientId: "p-2", title: "Patient" },
-    ],
-    staff: [
-      { id: "s-doc-1", name: "Dr. Helen Tesfaye", role: "doctor", dept: "General Medicine", status: "active", phone: "+251 911 100 001" },
-      { id: "s-doc-2", name: "Dr. Sara Mekonnen", role: "doctor", dept: "Cardiology", status: "active", phone: "+251 911 100 002" },
-      { id: "s-doc-3", name: "Dr. Dawit Bekele", role: "doctor", dept: "Pediatrics", status: "active", phone: "+251 911 100 003" },
-      { id: "s-doc-4", name: "Dr. Rahel Desta", role: "doctor", dept: "Maternity", status: "active", phone: "+251 911 100 004" },
-      { id: "s-doc-5", name: "Dr. Bemnet Girma", role: "doctor", dept: "Orthopedics", status: "active", phone: "+251 911 100 005" },
-      { id: "s-doc-6", name: "Dr. Kidist Alemu", role: "doctor", dept: "Neurology", status: "active", phone: "+251 911 100 006" },
-      { id: "s-doc-7", name: "Dr. Yared Negash", role: "doctor", dept: "Dermatology", status: "active", phone: "+251 911 100 007" },
-      { id: "s-doc-8", name: "Dr. Meron Tadesse", role: "doctor", dept: "Ophthalmology", status: "active", phone: "+251 911 100 008" },
-      { id: "s-nurse-1", name: "Rahel Abebe", role: "nurse", dept: "Maternity", ward: "Ward A", status: "active", phone: "+251 911 100 011" },
-      { id: "s-nurse-2", name: "Lidya Tadesse", role: "nurse", dept: "General Medicine", ward: "Ward B", status: "active", phone: "+251 911 100 012" },
-      { id: "s-admin", name: "Selam Bekele", role: "admin", dept: "Administration", status: "active", phone: "+251 911 100 099" },
-    ],
-    patients: [
-      { id: "p-1", name: "Amina Mohammed", age: 29, sex: "F", doctorId: "s-doc-1", ward: null, bed: null, condition: "Hypertension follow-up", blood: "O+", phone: "+251 911 200 001" },
-      { id: "p-2", name: "Yonas Hailu", age: 41, sex: "M", doctorId: "s-doc-2", ward: "Ward A", bed: "A-12", condition: "Cardiac monitoring", blood: "A+", phone: "+251 911 200 002" },
-      { id: "p-3", name: "Hana Kebede", age: 8, sex: "F", doctorId: "s-doc-3", ward: "Ward B", bed: "B-03", condition: "Pediatric fever review", blood: "B+", phone: "+251 911 200 003" },
-      { id: "p-4", name: "Mulugeta Assefa", age: 55, sex: "M", doctorId: "s-doc-1", ward: "Ward A", bed: "A-07", condition: "Diabetes review", blood: "AB+", phone: "+251 911 200 004" },
-      { id: "p-5", name: "Kidist Alemu", age: 33, sex: "F", doctorId: "s-doc-2", ward: null, bed: null, condition: "ECG screening", blood: "O-", phone: "+251 911 200 005" },
-    ],
-    appointments: [
-      { id: "a-1", patientId: "p-1", doctorId: "s-doc-1", date: "2026-10-24", time: "09:30", dept: "General Medicine", status: "confirmed", reason: "BP check" },
-      { id: "a-2", patientId: "p-1", doctorId: "s-doc-2", date: "2026-10-28", time: "11:00", dept: "Cardiology", status: "requested", reason: "Chest discomfort" },
-      { id: "a-3", patientId: "p-2", doctorId: "s-doc-2", date: "2026-10-23", time: "15:30", dept: "Cardiology", status: "confirmed", reason: "Post-op review" },
-      { id: "a-4", patientId: "p-3", doctorId: "s-doc-3", date: "2026-10-25", time: "10:00", dept: "Pediatrics", status: "confirmed", reason: "Fever follow-up" },
-      { id: "a-5", patientId: "p-4", doctorId: "s-doc-1", date: "2026-10-26", time: "14:00", dept: "General Medicine", status: "draft", reason: "HbA1c review" },
-      { id: "a-6", patientId: "p-2", doctorId: "s-doc-1", date: "2026-10-30", time: "08:45", dept: "General Medicine", status: "confirmed", reason: "Meds adjust" },
-      { id: "a-7", patientId: "p-5", doctorId: "s-doc-2", date: "2026-10-24", time: "13:15", dept: "Cardiology", status: "confirmed", reason: "ECG" },
-    ],
-    shifts: [
-      { id: "sh-1", staffId: "s-doc-1", date: "2026-10-23", slot: "08:00–16:00", dept: "General Medicine", status: "published", unit: "OPD 2" },
-      { id: "sh-2", staffId: "s-doc-1", date: "2026-10-24", slot: "08:00–16:00", dept: "General Medicine", status: "published", unit: "OPD 2" },
-      { id: "sh-3", staffId: "s-doc-2", date: "2026-10-23", slot: "12:00–20:00", dept: "Cardiology", status: "published", unit: "Cardio Bay" },
-      { id: "sh-4", staffId: "s-nurse-1", date: "2026-10-23", slot: "07:00–19:00", dept: "Maternity", status: "published", unit: "Ward A" },
-      { id: "sh-5", staffId: "s-nurse-1", date: "2026-10-24", slot: "19:00–07:00", dept: "Maternity", status: "draft", unit: "Ward A" },
-      { id: "sh-6", staffId: "s-nurse-2", date: "2026-10-23", slot: "07:00–19:00", dept: "General Medicine", status: "published", unit: "Ward B" },
-      { id: "sh-7", staffId: "s-doc-3", date: "2026-10-25", slot: "08:00–14:00", dept: "Pediatrics", status: "published", unit: "Peds Clinic" },
-    ],
-    exchanges: [
-      { id: "ex-1", fromStaffId: "s-doc-1", toStaffId: "s-doc-2", date: "2026-10-27", status: "pending_admin", reason: "CME conference" },
-      { id: "ex-2", fromStaffId: "s-nurse-1", toStaffId: "s-nurse-2", date: "2026-10-26", status: "peer_accepted", reason: "Family emergency" },
-    ],
-    doctorsPublic: [
-      { id: "s-doc-1", name: "Dr. Helen Tesfaye", specialty: "General Medicine", onDuty: true, nextSlot: "Today, 3:30 PM", rating: 4.9 },
-      { id: "s-doc-2", name: "Dr. Sara Mekonnen", specialty: "Cardiology", onDuty: true, nextSlot: "Tomorrow, 11:00 AM", rating: 4.8 },
-      { id: "s-doc-3", name: "Dr. Dawit Bekele", specialty: "Pediatrics", onDuty: false, nextSlot: "Fri, 10:00 AM", rating: 4.7 },
-      { id: "s-doc-4", name: "Dr. Rahel Desta", specialty: "Maternity", onDuty: true, nextSlot: "Today, 2:00 PM", rating: 4.8 },
-      { id: "s-doc-5", name: "Dr. Bemnet Girma", specialty: "Orthopedics", onDuty: true, nextSlot: "Thu, 9:00 AM", rating: 4.6 },
-      { id: "s-doc-6", name: "Dr. Kidist Alemu", specialty: "Neurology", onDuty: false, nextSlot: "Wed, 1:30 PM", rating: 4.7 },
-      { id: "s-doc-7", name: "Dr. Yared Negash", specialty: "Dermatology", onDuty: true, nextSlot: "Today, 4:15 PM", rating: 4.5 },
-      { id: "s-doc-8", name: "Dr. Meron Tadesse", specialty: "Ophthalmology", onDuty: false, nextSlot: "Sat, 10:30 AM", rating: 4.6 },
-    ],
-    /* SAMPLE: public doctor clinic availability by specialty (patients can read all) */
-    doctorSchedules: [
-      { id: "ds-1", doctorId: "s-doc-1", specialty: "General Medicine", day: "Monday", date: "2026-10-27", slots: ["09:00", "09:30", "10:00", "11:30", "14:00", "15:30"], room: "OPD 2", status: "open" },
-      { id: "ds-2", doctorId: "s-doc-1", specialty: "General Medicine", day: "Tuesday", date: "2026-10-28", slots: ["08:30", "09:00", "10:30", "13:00", "16:00"], room: "OPD 2", status: "open" },
-      { id: "ds-3", doctorId: "s-doc-1", specialty: "General Medicine", day: "Thursday", date: "2026-10-30", slots: ["09:00", "10:00", "11:00", "14:30"], room: "OPD 2", status: "limited" },
-      { id: "ds-4", doctorId: "s-doc-2", specialty: "Cardiology", day: "Monday", date: "2026-10-27", slots: ["11:00", "11:30", "12:00", "15:00", "15:30"], room: "Cardio Bay", status: "open" },
-      { id: "ds-5", doctorId: "s-doc-2", specialty: "Cardiology", day: "Wednesday", date: "2026-10-29", slots: ["09:30", "10:00", "13:15", "14:00"], room: "Cardio Bay", status: "open" },
-      { id: "ds-6", doctorId: "s-doc-2", specialty: "Cardiology", day: "Friday", date: "2026-10-31", slots: ["10:00", "10:30", "11:00"], room: "Cardio Bay", status: "limited" },
-      { id: "ds-7", doctorId: "s-doc-3", specialty: "Pediatrics", day: "Tuesday", date: "2026-10-28", slots: ["08:00", "08:30", "09:00", "09:30", "10:00"], room: "Peds Clinic", status: "open" },
-      { id: "ds-8", doctorId: "s-doc-3", specialty: "Pediatrics", day: "Friday", date: "2026-10-31", slots: ["09:00", "09:45", "10:30", "11:15"], room: "Peds Clinic", status: "open" },
-      { id: "ds-9", doctorId: "s-doc-4", specialty: "Maternity", day: "Monday", date: "2026-10-27", slots: ["08:00", "09:00", "10:00", "14:00", "15:00"], room: "Maternity Wing", status: "open" },
-      { id: "ds-10", doctorId: "s-doc-4", specialty: "Maternity", day: "Wednesday", date: "2026-10-29", slots: ["08:30", "09:30", "11:00", "13:30"], room: "Maternity Wing", status: "open" },
-      { id: "ds-11", doctorId: "s-doc-4", specialty: "Maternity", day: "Saturday", date: "2026-11-01", slots: ["09:00", "10:00", "11:00"], room: "Maternity Wing", status: "limited" },
-      { id: "ds-12", doctorId: "s-doc-5", specialty: "Orthopedics", day: "Tuesday", date: "2026-10-28", slots: ["09:00", "09:40", "10:20", "14:00"], room: "Ortho 1", status: "open" },
-      { id: "ds-13", doctorId: "s-doc-5", specialty: "Orthopedics", day: "Thursday", date: "2026-10-30", slots: ["08:30", "09:10", "09:50", "15:00", "15:40"], room: "Ortho 1", status: "open" },
-      { id: "ds-14", doctorId: "s-doc-6", specialty: "Neurology", day: "Wednesday", date: "2026-10-29", slots: ["13:00", "13:30", "14:00", "14:30"], room: "Neuro Suite", status: "open" },
-      { id: "ds-15", doctorId: "s-doc-6", specialty: "Neurology", day: "Friday", date: "2026-10-31", slots: ["10:00", "11:00", "12:00"], room: "Neuro Suite", status: "limited" },
-      { id: "ds-16", doctorId: "s-doc-7", specialty: "Dermatology", day: "Monday", date: "2026-10-27", slots: ["14:00", "14:20", "14:40", "15:00", "16:00"], room: "Derm Clinic", status: "open" },
-      { id: "ds-17", doctorId: "s-doc-7", specialty: "Dermatology", day: "Thursday", date: "2026-10-30", slots: ["09:00", "09:30", "10:00", "10:30"], room: "Derm Clinic", status: "open" },
-      { id: "ds-18", doctorId: "s-doc-8", specialty: "Ophthalmology", day: "Tuesday", date: "2026-10-28", slots: ["10:00", "10:30", "11:00"], room: "Eye Unit", status: "limited" },
-      { id: "ds-19", doctorId: "s-doc-8", specialty: "Ophthalmology", day: "Saturday", date: "2026-11-01", slots: ["09:00", "09:30", "10:00", "10:30", "11:00"], room: "Eye Unit", status: "open" },
-      { id: "ds-20", doctorId: "s-doc-2", specialty: "Cardiology", day: "Saturday", date: "2026-11-01", slots: ["09:00", "09:30"], room: "Cardio Bay", status: "full" },
-    ],
-    notifications: [
-      { id: "n-1", role: "admin", text: "2 shift swaps await your approval", time: "12m ago", level: "warn" },
-      { id: "n-2", role: "admin", text: "Duty schedule draft for Mon needs publish", time: "1h ago", level: "info" },
-      { id: "n-3", role: "doctor", text: "New visit request from Amina Mohammed", time: "18m ago", level: "warn" },
-      { id: "n-4", role: "doctor", text: "Lab result ready for Mulugeta Assefa", time: "40m ago", level: "ok" },
-      { id: "n-5", role: "nurse", text: "Ward A bed A-12 vitals due", time: "8m ago", level: "warn" },
-      { id: "n-6", role: "nurse", text: "Handoff note posted for night shift", time: "2h ago", level: "info" },
-      { id: "n-7", role: "patient", text: "Your Cardiology visit is requested", time: "25m ago", level: "info" },
-      { id: "n-8", role: "patient", text: "Reminder: General Medicine visit tomorrow 09:30", time: "3h ago", level: "ok" },
-    ],
-    activity: [
-      { role: "admin", text: "Published 14 shifts for General Medicine", time: "09:12" },
-      { role: "admin", text: "Added Dr. Dawit Bekele to Pediatrics", time: "08:40" },
-      { role: "doctor", text: "Confirmed visit a-3 for Yonas Hailu", time: "10:05" },
-      { role: "doctor", text: "Requested swap with Dr. Sara for Oct 27", time: "09:50" },
-      { role: "nurse", text: "Recorded vitals for bed A-12", time: "10:22" },
-      { role: "nurse", text: "Accepted peer swap for Oct 26", time: "07:15" },
-      { role: "patient", text: "Requested Cardiology appointment", time: "Yesterday" },
-      { role: "patient", text: "Saved Dr. Helen Tesfaye", time: "Mon" },
-    ],
-  };
+    /** Live workspace data — filled only from the API (no offline demo seed). */
+    const emptyDb = () => ({
+      users: [],
+      staff: [],
+      patients: [],
+      appointments: [],
+      shifts: [],
+      exchanges: [],
+      doctorsPublic: [],
+      doctorSchedules: [],
+      notifications: [],
+      activity: [],
+    });
+    const DB = emptyDb();
 
   function normalizeRole(value) {
     const r = String(value || "").trim().toLowerCase();
@@ -361,19 +270,38 @@
 
   async function hydrateFromApi(session) {
     if (!session?.cookieAuth) return session;
-    const [staff, patients, appointments, shifts, exchanges, notifications, doctors, schedules, stats, activity] =
-      await Promise.all([
-        api("/staff").catch(() => null),
-        api("/patients").catch(() => null),
-        api("/appointments").catch(() => null),
-        api("/shifts").catch(() => null),
-        api("/exchanges").catch(() => null),
-        api("/notifications").catch(() => null),
-        api("/doctors").catch(() => null),
-        api("/doctor-schedules").catch(() => null),
-        api("/dashboard/stats").catch(() => null),
-        api("/activity").catch(() => null),
-      ]);
+
+    // Always clear local collections first — never keep stale/demo rows after a failed fetch.
+    Object.assign(DB, emptyDb());
+    cachedStats = null;
+    cachedActivity = [];
+
+    const results = await Promise.allSettled([
+      api("/staff"),
+      api("/patients"),
+      api("/appointments"),
+      api("/shifts"),
+      api("/exchanges"),
+      api("/notifications"),
+      api("/doctors"),
+      api("/doctor-schedules"),
+      api("/dashboard/stats"),
+      api("/activity"),
+    ]);
+
+    const val = (i) => (results[i].status === "fulfilled" ? results[i].value : null);
+    const failed = results.filter((r) => r.status === "rejected").length;
+    const staff = val(0);
+    const patients = val(1);
+    const appointments = val(2);
+    const shifts = val(3);
+    const exchanges = val(4);
+    const notifications = val(5);
+    const doctors = val(6);
+    const schedules = val(7);
+    const stats = val(8);
+    const activity = val(9);
+
     if (staff?.data) DB.staff = staff.data;
     if (patients?.data) {
       DB.patients = patients.data.map((p) => ({
@@ -409,7 +337,15 @@
       }));
       DB.activity = cachedActivity;
     }
+
     session.source = "api";
+    session.hydrateFailed = failed;
+    if (failed > 0) {
+      session.hydrateWarning = failed + " workspace API request(s) failed — some lists may be empty.";
+      console.warn("[filfilu]", session.hydrateWarning);
+    } else {
+      delete session.hydrateWarning;
+    }
     writeSession(session);
     return session;
   }
@@ -809,11 +745,7 @@
     initials,
     normalizeRole,
     dashboardPath: () => "app.html",
-    demoAccounts: [
-      { email: "admin@filfilu.com", role: "admin", name: "Selam Bekele" },
-      { email: "doctor@filfilu.com", role: "doctor", name: "Dr. Helen Tesfaye" },
-      { email: "nurse@filfilu.com", role: "nurse", name: "Rahel Abebe" },
-      { email: "patient@filfilu.com", role: "patient", name: "Amina Mohammed" },
-    ],
+    /** Hint only — accounts exist after local CONFIRM_SEED=YES npm run db:seed (not for production). */
+    demoAccounts: [],
   };
 })(window);

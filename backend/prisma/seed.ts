@@ -3,7 +3,27 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+/**
+ * Destructive demo seed — wipes all HMS tables then loads sample data.
+ * Blocked in production unless ALLOW_DESTRUCTIVE_SEED=1.
+ * Always requires CONFIRM_SEED=YES to run.
+ */
 async function main() {
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_DESTRUCTIVE_SEED !== "1") {
+    throw new Error(
+      "Refusing to seed in production (would wipe the database). Set ALLOW_DESTRUCTIVE_SEED=1 only if you intentionally want a destructive demo reset.",
+    );
+  }
+  if (process.env.CONFIRM_SEED !== "YES") {
+    throw new Error(
+      'Seed is destructive (deletes all rows). Re-run with CONFIRM_SEED=YES, e.g. PowerShell: $env:CONFIRM_SEED="YES"; npm run db:seed',
+    );
+  }
+
+  console.warn(
+    "[seed] Wiping all tables and loading DEMO data. Demo password for seeded users is \"filfilu\" — local/dev only.",
+  );
+
   await prisma.auditLog.deleteMany();
   await prisma.bookingRequest.deleteMany();
   await prisma.contactMessage.deleteMany();
@@ -171,7 +191,9 @@ async function main() {
     await prisma.notification.create({ data: n });
   }
 
-  console.log("Seed complete. Demo password for all users: filfilu");
+  console.log(
+    "Seed complete (local/demo only). Seeded password for demo accounts: filfilu — change before any shared/prod use.",
+  );
 }
 
 main()
