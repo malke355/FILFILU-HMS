@@ -1,6 +1,6 @@
-# Filfilu HMS — Phase 2 Backend
+# Filfilu HMS — Backend
 
-Express + TypeScript + Prisma + SQLite API with JWT auth and server-side RBAC/RLS.
+Express + TypeScript + Prisma + PostgreSQL API with JWT auth and server-side RBAC/RLS.
 
 ## Quick start
 
@@ -9,10 +9,12 @@ cd backend
 cp .env.example .env   # if needed
 npm install
 npm run db:generate
-npm run db:push
+npm run db:deploy
 npm run db:seed
 npm run dev
 ```
+
+Schema: use `npm run db:migrate` while developing, `npm run db:deploy` in CI/production (`prisma migrate deploy` only — no runtime `CREATE TABLE`).
 
 App: **http://127.0.0.1:8080/login.html** (UI and `/api` on the same port)
 
@@ -117,7 +119,8 @@ Then:
 
 ```bash
 npm install
-npx prisma db push
+npm run db:deploy
+npm run db:seed
 npm run dev
 ```
 
@@ -147,6 +150,17 @@ Protected API routes accept either the session cookie or `Authorization: Bearer 
 |---------|---------|
 | `npm run dev` | tsx watch on `:8080` (UI + API) |
 | `npm run build` / `start` | Compile + run `dist` |
-| `npm run db:push` | Sync Prisma schema to SQLite |
+| `npm run db:migrate` | Create/apply migrations in development |
+| `npm run db:deploy` | `prisma migrate deploy` (CI/production) |
 | `npm run db:seed` | Load demo data |
-| `npm run db:reset` | Wipe DB + reseed |
+| `npm run db:reset` | `prisma migrate reset` + seed |
+| `npm test` | Unit tests |
+| `npm run typecheck` | TypeScript check |
+
+## Production deploy notes
+
+- **Product host** is this Express app (not GitHub Pages). Pages can only serve static `landing/`.
+- **Dockerfile** (`backend/Dockerfile`): build from repo root, run with production env (`NODE_ENV=production`, HTTPS `CORS_ORIGIN` / `FRONTEND_ORIGIN`, strong `JWT_SECRET`, `TRUST_PROXY=1`, `COOKIE_SECURE=1`).
+- **TLS**: terminate HTTPS with nginx using `docker/nginx/filfilu.conf`, then proxy to the app on `:8080`.
+- **Backups**: `scripts/backup-db.ps1` (Windows) or `scripts/backup-db.sh` — `pg_dump` of the HMS Postgres volume; keep off-box copies.
+- List endpoints accept `?page=&limit=` (default 100, max 200) and return `{ data, meta }`.

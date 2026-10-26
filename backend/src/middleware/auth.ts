@@ -1,8 +1,9 @@
 import type { NextFunction, Request, Response } from "express";
 import { verifyToken, type JwtPayload } from "../lib/auth.js";
-import { SESSION_COOKIE } from "../lib/sessionCookie.js";
+import { prisma } from "../lib/prisma.js";
 import { can } from "../lib/rbac.js";
 import type { Role } from "../lib/roles.js";
+import { SESSION_COOKIE } from "../lib/sessionCookie.js";
 
 export type AuthedRequest = Request & { user?: JwtPayload };
 
@@ -13,29 +14,76 @@ function tokenFromRequest(req: Request): string | null {
   return cookieToken || null;
 }
 
+export { tokenFromRequest };
+
+async function loadValidSession(token: string): Promise<JwtPayload | null> {
+  let payload: JwtPayload;
+  try {
+    payload = verifyToken(token);
+  } catch {
+    return null;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.sub },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      title: true,
+      staffId: true,
+      patientId: true,
+      ward: true,
+      dept: true,
+      tokenVersion: true,
+      staff: { select: { status: true } },
+    },
+  });
+
+  if (!user) return null;
+  if ((payload.tv ?? -1) !== user.tokenVersion) return null;
+  if (user.staff && user.staff.status === "inactive") return null;
+
+  return {
+    sub: user.id,
+    email: user.email,
+    role: user.role as Role,
+    name: user.name,
+    tv: user.tokenVersion,
+    staffId: user.staffId,
+    patientId: user.patientId,
+    ward: user.ward,
+    dept: user.dept,
+    title: user.title,
+  };
+}
+
 export function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
   const token = tokenFromRequest(req);
   if (!token) {
     return res.status(401).json({ error: "Authentication required." });
   }
-  try {
-    req.user = verifyToken(token);
-    return next();
-  } catch {
-    return res.status(401).json({ error: "Invalid or expired token." });
-  }
+  loadValidSession(token)
+    .then((user) => {
+      if (!user) {
+        return res.status(401).json({ error: "Invalid or expired session. Please sign in again." });
+      }
+      req.user = user;
+      return next();
+    })
+    .catch(next);
 }
 
 export function optionalAuth(req: AuthedRequest, _res: Response, next: NextFunction) {
   const token = tokenFromRequest(req);
-  if (token) {
-    try {
-      req.user = verifyToken(token);
-    } catch {
-      /* ignore */
-    }
-  }
-  next();
+  if (!token) return next();
+  loadValidSession(token)
+    .then((user) => {
+      if (user) req.user = user;
+      next();
+    })
+    .catch(() => next());
 }
 
 export function requireRole(...roles: Role[]) {

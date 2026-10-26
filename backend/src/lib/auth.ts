@@ -7,6 +7,8 @@ export type JwtPayload = {
   email: string;
   role: Role;
   name: string;
+  /** Session generation — must match User.tokenVersion or the token is rejected. */
+  tv: number;
   staffId?: string | null;
   patientId?: string | null;
   ward?: string | null;
@@ -14,8 +16,24 @@ export type JwtPayload = {
   title?: string | null;
 };
 
+const WEAK_SECRETS = new Set([
+  "",
+  "filfilu-dev-secret-change-me",
+  "change-me-in-production",
+  "secret",
+  "jwt-secret",
+  "replace-with-a-long-random-secret",
+  "replace-with-a-long-random-secret-at-least-32-chars",
+]);
+
 function secret() {
-  return process.env.JWT_SECRET || "filfilu-dev-secret-change-me";
+  const s = process.env.JWT_SECRET?.trim() || "";
+  if (!s || WEAK_SECRETS.has(s) || s.length < 32) {
+    throw new Error(
+      "JWT_SECRET is missing, too short (<32), or a known placeholder. Set a strong unique value in backend/.env.",
+    );
+  }
+  return s;
 }
 
 export async function hashPassword(password: string) {
@@ -34,5 +52,5 @@ export function signToken(payload: JwtPayload) {
 }
 
 export function verifyToken(token: string): JwtPayload {
-  return jwt.verify(token, secret()) as JwtPayload;
+  return jwt.verify(token, secret(), { algorithms: ["HS256"] }) as JwtPayload;
 }

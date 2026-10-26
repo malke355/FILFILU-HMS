@@ -1,5 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
+import { isProduction } from "../lib/env.js";
+import { logError } from "../lib/logger.js";
 
 export function notFound(_req: Request, res: Response) {
   res.status(404).json({ error: "Not found." });
@@ -18,15 +20,34 @@ function isDatabaseUnreachable(err: unknown): boolean {
   );
 }
 
+function httpStatusFromError(err: unknown): number | null {
+  if (!err || typeof err !== "object") return null;
+  const status = (err as { status?: unknown }).status;
+  if (typeof status === "number" && status >= 400 && status < 600) return status;
+  return null;
+}
+
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (err instanceof ZodError) {
-    return res.status(400).json({ error: "Validation failed.", details: err.flatten() });
+    return res.status(400).json({
+      error: "Validation failed.",
+      ...(isProduction() ? {} : { details: err.flatten() }),
+    });
   }
-  console.error(err);
+
+  const status = httpStatusFromError(err);
+  if (status && err instanceof Error) {
+    // Intentional client-facing errors (booking conflicts, etc.) — message is already safe.
+    if (status >= 500) logError("http", err);
+    return res.status(status).json({ error: err.message || "Request failed." });
+  }
+
+  logError("http", err);
   if (isDatabaseUnreachable(err)) {
     return res.status(503).json({
-      error:
-        "Database unreachable. Local default is SQLite (DATABASE_URL=file:./dev.db). If you use Postgres, run: docker compose up -d",
+      error: isProduction()
+        ? "Service temporarily unavailable."
+        : "Database unreachable. Ensure Postgres is running and migrations are applied (npm run db:deploy).",
     });
   }
   return res.status(500).json({ error: "Internal server error." });

@@ -1,4 +1,8 @@
-name: Deploy GitHub Pages
+name: Deploy GitHub Pages (static brochure)
+
+# Pages hosts static landing only — NOT the Filfilu product API.
+# Full app: deploy/run Express (backend) which serves landing + /api together.
+# Optional repo variable FILFILU_API_BASE (https://your-api.example/api) wires Pages → API.
 
 on:
   push:
@@ -20,6 +24,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Write static config.js
+        env:
+          FILFILU_API_BASE: ${{ vars.FILFILU_API_BASE }}
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const api = (process.env.FILFILU_API_BASE || "").trim();
+          const body = [
+            "/* Generated for GitHub Pages — static brochure host */",
+            `window.FILFILU_API_BASE = ${JSON.stringify(api)};`,
+            "window.FILFILU_STATIC_HOST = true;",
+            "",
+          ].join("\n");
+          fs.writeFileSync("landing/js/config.js", body);
+          console.log(body);
+          NODE
 
       - name: Upload landing (static UI)
         uses: actions/upload-pages-artifact@v3

@@ -242,38 +242,22 @@
             <div class="input-wrap"><input id="email" name="email" type="email" required autocomplete="email" placeholder="you@email.com" /></div>
           </div>
           <div class="field">
-            <span id="roleLabel" data-i18n="signup.role">I am a</span>
+            <span id="roleLabel" data-i18n="signup.role">Account type</span>
             <div class="role-picker" role="radiogroup" aria-labelledby="roleLabel">
-              <input type="radio" name="role" id="role-patient" value="patient" required />
+              <input type="radio" name="role" id="role-patient" value="patient" checked required />
               <label class="role-card" data-role="patient" for="role-patient">
                 <strong data-i18n="login.roleOpt.patient">Patient</strong>
                 <span data-i18n="signup.roleDesc.patient">Book visits &amp; care updates</span>
               </label>
-              <input type="radio" name="role" id="role-doctor" value="doctor" />
-              <label class="role-card" data-role="doctor" for="role-doctor">
-                <strong data-i18n="login.roleOpt.doctor">Doctor</strong>
-                <span data-i18n="signup.roleDesc.doctor">Clinic roster &amp; patients</span>
-              </label>
-              <input type="radio" name="role" id="role-nurse" value="nurse" />
-              <label class="role-card" data-role="nurse" for="role-nurse">
-                <strong data-i18n="login.roleOpt.nurse">Nurse</strong>
-                <span data-i18n="signup.roleDesc.nurse">Ward board &amp; shifts</span>
-              </label>
-              <input type="radio" name="role" id="role-admin" value="admin" />
-              <label class="role-card" data-role="admin" for="role-admin">
-                <strong data-i18n="login.roleOpt.admin">Admin</strong>
-                <span data-i18n="signup.roleDesc.admin">Staff, schedules &amp; approvals</span>
-              </label>
             </div>
+            <p class="sub" style="margin:.55rem 0 0;font-size:.82rem" data-i18n="signup.staffHint">
+              Doctors and nurses cannot self-register — an administrator creates their accounts. Staff sign in on the login page.
+            </p>
           </div>
           <div class="field">
             <label for="password" data-i18n="signup.password">Password</label>
             <div class="input-wrap"><input id="password" name="password" type="password" required autocomplete="new-password" minlength="6" data-i18n-placeholder="signup.passwordPh" placeholder="Create a password" /></div>
           </div>
-          <label class="check">
-            <input type="checkbox" name="terms" required />
-            <span data-i18n="signup.terms">I agree to Filfilu’s care terms and privacy notice.</span>
-          </label>
           <button class="btn" type="submit" data-i18n="signup.submit">Create account</button>
         </form>
 
@@ -301,8 +285,9 @@
     </aside>
   </main>
 
+  <script src="js/config.js?v=1"></script>
   <script src="js/i18n.js?v=2"></script>
-  <script src="js/auth.js?v=2"></script>
+  <script src="js/auth.js?v=5"></script>
   <script>
     (() => {
       const Auth = window.FilfiluAuth;
@@ -313,7 +298,7 @@
       const oauthError = params.get("error");
 
       (async () => {
-        if (Auth.session()?.token || Auth.session()?.cookieAuth) {
+        if (Auth.session()?.cookieAuth) {
           location.href = Auth.dashboardPath();
           return;
         }
@@ -343,19 +328,8 @@
       }
 
       document.getElementById("googleSignupBtn").addEventListener("click", () => {
-        const form = document.getElementById("signupForm");
-        const role = (form.querySelector('input[name="role"]:checked') || {}).value || "";
-        const terms = form.querySelector('input[name="terms"]');
-        if (!role) {
-          showMsg(t("signup.googleNeedRole"));
-          return;
-        }
-        if (terms && !terms.checked) {
-          showMsg(t("signup.googleNeedTerms"));
-          return;
-        }
         showMsg(t("signup.googleMsg"));
-        Auth.beginGoogleSignIn({ intent: "signup", role });
+        Auth.beginGoogleSignIn({ intent: "signup", role: "patient" });
       });
 
       document.getElementById("signupForm").addEventListener("submit", async (e) => {
@@ -363,22 +337,16 @@
         const first = e.target.first.value.trim();
         const last = e.target.last.value.trim();
         const email = e.target.email.value.trim();
-        const role = (e.target.querySelector('input[name="role"]:checked') || {}).value || "";
         const password = e.target.password.value;
-        if (!role) {
-          msg.textContent = t("signup.chooseRole");
-          msg.classList.add("show");
-          return;
-        }
         msg.textContent = t("signup.creating");
         msg.classList.add("show");
-        const result = await Auth.signup({ first, last, email, role, password });
+        const result = await Auth.signup({ first, last, email, role: "patient", password });
         if (!result.ok) {
           msg.textContent = result.error || "Sign up failed.";
           msg.classList.add("show");
           return;
         }
-        const label = result.session.meta?.label || role;
+        const label = result.session.meta?.label || "Patient";
         msg.textContent = t("signup.welcome", { first, label });
         msg.classList.add("show");
         setTimeout(() => { location.href = Auth.dashboardPath(); }, 650);

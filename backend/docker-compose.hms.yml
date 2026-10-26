@@ -1,21 +1,30 @@
-# HMS PostgreSQL — matches .env credentials
-# Default publishes 5433. If Windows PostgreSQL already owns 5433, use:
-#   $env:HMS_PG_PORT=5434; docker compose -f docker-compose.hms.yml up -d
+# HMS PostgreSQL — credentials come from backend/.env (never hardcode passwords here).
+# Start:
+#   cd backend
+#   $env:HMS_PG_PORT=5434
+#   docker compose -f docker-compose.hms.yml --env-file .env up -d
+#
+# Port is bound to loopback only (not LAN). App connects as PGUSER (least-privilege),
+# not as the postgres superuser.
 services:
   db:
     image: postgres:16-alpine
     container_name: filfilu-hms-pg
     restart: unless-stopped
     ports:
-      - "${HMS_PG_PORT:-5433}:5432"
+      - "127.0.0.1:${HMS_PG_PORT:-5434}:5432"
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "12345678"
-      POSTGRES_DB: hms
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
+      POSTGRES_DB: ${PGDATABASE:-hms}
+      # Used by docker/postgres/init-app-user.sh on first volume init only
+      HMS_APP_USER: ${PGUSER:-filfilu}
+      HMS_APP_PASSWORD: ${PGPASSWORD:?Set PGPASSWORD in backend/.env}
     volumes:
       - filfilu_hms_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init-app-user.sh:/docker-entrypoint-initdb.d/10-init-app-user.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d hms"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 3s
       timeout: 5s
       retries: 20

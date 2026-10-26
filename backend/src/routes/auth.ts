@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { hashPassword, signToken, verifyPassword } from "../lib/auth.js";
+import { hashPassword, signToken, verifyPassword, verifyToken } from "../lib/auth.js";
 import {
   buildGoogleAuthUrl,
   exchangeCodeAndVerify,
@@ -11,8 +11,18 @@ import {
   newOAuthState,
   type GoogleProfile,
 } from "../lib/google.js";
+import { writeAudit } from "../lib/audit.js";
+import { logError, logInfo } from "../lib/logger.js";
+import { sendPasswordResetEmail, smtpConfigured } from "../lib/mail.js";
+import {
+  consumePasswordResetToken,
+  issuePasswordResetToken,
+  markResetTokenUsed,
+} from "../lib/passwordReset.js";
+import { redactEmail } from "../lib/privacy.js";
 import { PERMISSIONS } from "../lib/rbac.js";
-import { ROLES, type Role } from "../lib/roles.js";
+import { PUBLIC_SIGNUP_ROLE, ROLES, type Role } from "../lib/roles.js";
+import { bumpTokenVersion } from "../lib/session.js";
 import {
   OAUTH_MODE_COOKIE,
   OAUTH_STATE_COOKIE,
@@ -23,7 +33,14 @@ import {
   setOAuthStateCookie,
   setSessionCookie,
 } from "../lib/sessionCookie.js";
-import { requireAuth, type AuthedRequest } from "../middleware/auth.js";
+import { requireAuth, tokenFromRequest, type AuthedRequest } from "../middleware/auth.js";
+import {
+  forgotPasswordLimiter,
+  googleAuthLimiter,
+  loginLimiter,
+  resetPasswordLimiter,
+  signupLimiter,
+} from "../middleware/rateLimit.js";
 
 const router = Router();
 
@@ -35,12 +52,13 @@ const loginSchema = z.object({
   role: roleSchema.optional(),
 });
 
+/** Public signup is patient-only — role in the body is ignored if present. */
 const signupSchema = z.object({
-  first: z.string().min(1),
-  last: z.string().min(1),
+  first: z.string().min(1).max(80),
+  last: z.string().min(1).max(80),
   email: z.string().email(),
-  password: z.string().min(6),
-  role: roleSchema,
+  password: z.string().min(6).max(128),
+  role: z.string().optional(),
 });
 
 function publicUser(u: {
@@ -82,12 +100,14 @@ function issueAuth(res: import("express").Response, user: {
   patientId: string | null;
   ward: string | null;
   dept: string | null;
+  tokenVersion?: number;
 }, status = 200) {
   const token = signToken({
     sub: user.id,
     email: user.email,
     role: user.role as Role,
     name: user.name,
+    tv: user.tokenVersion ?? 0,
     staffId: user.staffId,
     patientId: user.patientId,
     ward: user.ward,
@@ -95,38 +115,32 @@ function issueAuth(res: import("express").Response, user: {
     title: user.title,
   });
   setSessionCookie(res, token);
-  return res.status(status).json({ token, user: publicUser(user) });
+  // Never return the JWT in the JSON body — browser sessions use the httpOnly cookie only.
+  return res.status(status).json({ user: publicUser(user) });
 }
 
-type GoogleOAuthMode = { intent: "login" | "signup"; role: Role };
+type GoogleOAuthMode = { intent: "login" | "signup" };
 
 function parseOAuthMode(raw: string | undefined): GoogleOAuthMode {
-  if (!raw) return { intent: "login", role: "patient" };
-  if (raw === "login") return { intent: "login", role: "patient" };
-  if (raw.startsWith("signup:")) {
-    const role = raw.slice("signup:".length);
-    if ((ROLES as readonly string[]).includes(role)) {
-      return { intent: "signup", role: role as Role };
-    }
-    return { intent: "signup", role: "patient" };
-  }
-  if (raw === "signup") return { intent: "signup", role: "patient" };
-  return { intent: "login", role: "patient" };
+  if (!raw) return { intent: "login" };
+  if (raw === "signup" || raw.startsWith("signup:")) return { intent: "signup" };
+  return { intent: "login" };
 }
 
-async function linkOrRefreshGoogleUser(
+const GOOGLE_PASSWORD_ACCOUNT_MSG =
+  "An account with this email already uses a password. Sign in with email and password, or use Forgot password. Google cannot attach to that account automatically.";
+
+async function refreshGoogleUser(
   existing: {
     id: string;
     name: string;
     picture: string | null;
   },
   profile: GoogleProfile,
-  linkSub: boolean,
 ) {
   return prisma.user.update({
     where: { id: existing.id },
     data: {
-      ...(linkSub ? { googleSub: profile.sub } : {}),
       email: profile.email.toLowerCase(),
       name: profile.name || existing.name,
       picture: profile.picture ?? existing.picture,
@@ -136,82 +150,84 @@ async function linkOrRefreshGoogleUser(
 }
 
 /**
- * Google Sign-In (login page): only existing DB users.
- * Match by googleSub or verified email, then link if needed.
+ * Google Sign-In: only existing users already linked by googleSub.
+ * Never auto-link a password account by email (prevents pre-registration takeover).
  */
 async function resolveRegisteredGoogleUser(profile: GoogleProfile) {
   const email = profile.email.toLowerCase();
 
   const bySub = await prisma.user.findUnique({ where: { googleSub: profile.sub } });
-  if (bySub) return linkOrRefreshGoogleUser(bySub, profile, false);
+  if (bySub) return refreshGoogleUser(bySub, profile);
 
   const byEmail = await prisma.user.findUnique({ where: { email } });
-  if (byEmail) return linkOrRefreshGoogleUser(byEmail, profile, true);
+  if (byEmail?.passwordHash) {
+    throw new Error(GOOGLE_PASSWORD_ACCOUNT_MSG);
+  }
+  if (byEmail?.googleSub && byEmail.googleSub !== profile.sub) {
+    throw new Error("This email is linked to a different Google account. Sign in with that Google account.");
+  }
 
   throw new Error(
-    "No Filfilu account found for this Google email. Create an account with Sign Up first, then use Sign in with Google.",
+    "No Filfilu account found for this Google email. Patients can Sign Up with Google first; doctors and nurses must be registered by an admin.",
   );
 }
 
-/**
- * Continue with Google (signup page): create a Filfilu account for a new Google email.
- * If the email (or Google account) already exists, sign them in instead.
- */
-async function createOrSignInGoogleUser(profile: GoogleProfile, role: Role) {
+/** Google signup: create a patient account only (never staff/admin). */
+async function createOrSignInGooglePatient(profile: GoogleProfile) {
   const email = profile.email.toLowerCase();
 
   const bySub = await prisma.user.findUnique({ where: { googleSub: profile.sub } });
-  if (bySub) return linkOrRefreshGoogleUser(bySub, profile, false);
+  if (bySub) return refreshGoogleUser(bySub, profile);
 
   const byEmail = await prisma.user.findUnique({ where: { email } });
-  if (byEmail) return linkOrRefreshGoogleUser(byEmail, profile, true);
+  if (byEmail?.passwordHash) {
+    throw new Error(GOOGLE_PASSWORD_ACCOUNT_MSG);
+  }
+  if (byEmail?.googleSub) {
+    // Same email already Google-linked under another sub — should be rare.
+    throw new Error("An account with this email already exists. Sign in with Google from the login page.");
+  }
+  if (byEmail) {
+    // Orphan email row without password/google — refuse silent takeover.
+    throw new Error("An account with this email already exists. Sign in with email and password, or use Forgot password.");
+  }
 
   const name = profile.name || email.split("@")[0] || "Google user";
-  const template = await prisma.user.findFirst({ where: { role } });
-  let staffId: string | null = null;
-  let patientId: string | null = null;
-  const ward = template?.ward ?? null;
-  const dept = template?.dept ?? (role === "doctor" ? "General Medicine" : null);
-
-  if (role === "patient") {
-    const patient = await prisma.patient.create({
-      data: {
-        name,
-        age: 30,
-        condition: "New patient registration",
-        doctorId: "s-doc-1",
-      },
-    });
-    patientId = patient.id;
-  } else {
-    const staff = await prisma.staff.create({
-      data: {
-        name,
-        role,
-        dept: dept || "Administration",
-        ward,
-        status: "active",
-      },
-    });
-    staffId = staff.id;
-  }
+  // No seed/default doctor assignment — admin assigns primary doctor later.
+  const patient = await prisma.patient.create({
+    data: {
+      name,
+      age: 30,
+      condition: "New patient registration",
+      doctorId: null,
+    },
+  });
 
   return prisma.user.create({
     data: {
       email,
       passwordHash: null,
       name,
-      role,
-      title: role === "patient" ? "Patient" : role,
+      role: PUBLIC_SIGNUP_ROLE,
+      title: "Patient",
       picture: profile.picture,
       googleSub: profile.sub,
       emailVerified: true,
-      staffId,
-      patientId,
-      ward,
-      dept,
+      staffId: null,
+      patientId: patient.id,
+      ward: null,
+      dept: null,
     },
   });
+}
+
+async function assertStaffActive(user: { staffId: string | null; role: string }) {
+  if (!user.staffId) return;
+  if (user.role === "patient") return;
+  const staff = await prisma.staff.findUnique({ where: { id: user.staffId } });
+  if (staff && staff.status === "inactive") {
+    throw Object.assign(new Error("This staff account is deactivated. Contact an administrator."), { status: 403 });
+  }
 }
 
 function authRedirectError(message: string, page: "login.html" | "signup.html" = "login.html") {
@@ -220,7 +236,7 @@ function authRedirectError(message: string, page: "login.html" | "signup.html" =
   return url.toString();
 }
 
-router.post("/login", async (req, res, next) => {
+router.post("/login", loginLimiter, async (req, res, next) => {
   try {
     const body = loginSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email: body.email.toLowerCase() } });
@@ -235,9 +251,14 @@ router.post("/login", async (req, res, next) => {
       });
     }
 
-    await prisma.auditLog.create({
-      data: { actorId: user.id, action: "auth.login", entity: "User", metaJson: JSON.stringify({ role: user.role }) },
-    });
+    try {
+      await assertStaffActive(user);
+    } catch (err) {
+      const e = err as Error & { status?: number };
+      return res.status(e.status || 403).json({ error: e.message });
+    }
+
+    await writeAudit({ actorId: user.id, action: "auth.login", entity: "User", meta: { role: user.role } });
 
     return issueAuth(res, user);
   } catch (err) {
@@ -245,62 +266,50 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
-router.post("/signup", async (req, res, next) => {
+router.post("/signup", signupLimiter, async (req, res, next) => {
   try {
     const body = signupSchema.parse(req.body);
+
+    // Hard reject staff/admin self-registration even if the client sends a role.
+    if (body.role && body.role !== PUBLIC_SIGNUP_ROLE) {
+      return res.status(403).json({
+        error: "Only patients can create an account. Doctors and nurses are registered by an administrator.",
+      });
+    }
+
     const email = body.email.toLowerCase();
     const exists = await prisma.user.findUnique({ where: { email } });
     if (exists) return res.status(409).json({ error: "An account with this email already exists." });
 
     const passwordHash = await hashPassword(body.password);
     const name = `${body.first} ${body.last}`.trim();
-    const template = await prisma.user.findFirst({ where: { role: body.role } });
 
-    let staffId: string | null = null;
-    let patientId: string | null = null;
-    const ward = template?.ward ?? null;
-    const dept = template?.dept ?? (body.role === "doctor" ? "General Medicine" : null);
-
-    if (body.role === "patient") {
-      const patient = await prisma.patient.create({
-        data: {
-          name,
-          age: 30,
-          condition: "New patient registration",
-          doctorId: "s-doc-1",
-        },
-      });
-      patientId = patient.id;
-    } else {
-      const staff = await prisma.staff.create({
-        data: {
-          name,
-          role: body.role,
-          dept: dept || "Administration",
-          ward,
-          status: "active",
-        },
-      });
-      staffId = staff.id;
-    }
+    // Leave primary doctor unassigned — never hardcode seed IDs like s-doc-1.
+    const patient = await prisma.patient.create({
+      data: {
+        name,
+        age: 30,
+        condition: "New patient registration",
+        doctorId: null,
+      },
+    });
 
     const user = await prisma.user.create({
       data: {
         email,
         passwordHash,
         name,
-        role: body.role,
-        title: body.role === "patient" ? "Patient" : body.role,
-        staffId,
-        patientId,
-        ward,
-        dept,
+        role: PUBLIC_SIGNUP_ROLE,
+        title: "Patient",
+        emailVerified: false,
+        staffId: null,
+        patientId: patient.id,
+        ward: null,
+        dept: null,
       },
     });
 
-    await prisma.auditLog.create({
-      data: { actorId: user.id, action: "auth.signup", entity: "User", metaJson: JSON.stringify({ role: user.role }) },
-    });
+    await writeAudit({ actorId: user.id, action: "auth.signup", entity: "User", meta: { role: user.role } });
 
     return issueAuth(res, user, 201);
   } catch (err) {
@@ -308,12 +317,109 @@ router.post("/signup", async (req, res, next) => {
   }
 });
 
+const forgotSchema = z.object({
+  email: z.string().email(),
+});
+
+const resetSchema = z.object({
+  token: z.string().min(20).max(200),
+  password: z.string().min(6).max(128),
+});
+
+/**
+ * Request a password reset. Always returns the same message (no email enumeration).
+ * Sends email via Nodemailer when SMTP is configured; in development also returns `devResetUrl`.
+ */
+router.post("/forgot-password", forgotPasswordLimiter, async (req, res, next) => {
+  try {
+    const body = forgotSchema.parse(req.body);
+    const email = body.email.toLowerCase();
+    const generic = {
+      ok: true,
+      message: "If an account with that email exists, a password reset link has been sent. Check your inbox (and spam).",
+    };
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    // Only password-based accounts can reset; Google-only accounts have no passwordHash.
+    if (!user?.passwordHash) {
+      return res.json(generic);
+    }
+
+    const issued = await issuePasswordResetToken(user.id);
+    let mailed = false;
+    if (smtpConfigured()) {
+      try {
+        mailed = await sendPasswordResetEmail(email, issued.resetUrl);
+      } catch (err) {
+        logError("auth.forgot_password.mail", err);
+        // Still return generic message — do not reveal mail failure to clients.
+      }
+    }
+
+    // Never put reset URLs in JSON unless explicitly opted in (local debug only).
+    const allowDevResetUrl =
+      process.env.NODE_ENV !== "production" && process.env.ALLOW_DEV_RESET_URL === "1";
+    if (allowDevResetUrl || process.env.NODE_ENV !== "production") {
+      logInfo(
+        `[password-reset] ${redactEmail(email)} mailed=${mailed}` +
+          (allowDevResetUrl ? ` link=${issued.resetUrl}` : ""),
+      );
+    }
+
+    await writeAudit({
+      actorId: user.id,
+      action: "auth.forgot_password",
+      entity: "User",
+      meta: { emailed: mailed },
+    });
+
+    const payload: Record<string, unknown> = { ...generic };
+    if (allowDevResetUrl) {
+      payload.devResetUrl = issued.resetUrl;
+      payload.devMailed = mailed;
+    }
+    return res.json(payload);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Set a new password using a one-time reset token. */
+router.post("/reset-password", resetPasswordLimiter, async (req, res, next) => {
+  try {
+    const body = resetSchema.parse(req.body);
+    const row = await consumePasswordResetToken(body.token);
+    if (!row) {
+      return res.status(400).json({ error: "This reset link is invalid or has expired. Request a new one." });
+    }
+
+    const passwordHash = await hashPassword(body.password);
+    await prisma.user.update({
+      where: { id: row.userId },
+      data: {
+        passwordHash,
+        tokenVersion: { increment: 1 },
+      },
+    });
+    await markResetTokenUsed(row.id, row.userId);
+
+    await writeAudit({
+      actorId: row.userId,
+      action: "auth.reset_password",
+      entity: "User",
+    });
+
+    clearSessionCookie(res);
+    return res.json({ ok: true, message: "Password updated. You can sign in with your new password." });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** Start Google OAuth — redirects to Google's account chooser. */
-router.get("/google", (req, res) => {
+router.get("/google", googleAuthLimiter, (req, res) => {
   const intentRaw = typeof req.query.intent === "string" ? req.query.intent : "login";
   const intent = intentRaw === "signup" ? "signup" : "login";
-  const roleRaw = typeof req.query.role === "string" ? req.query.role : "patient";
-  const role = (ROLES as readonly string[]).includes(roleRaw) ? (roleRaw as Role) : "patient";
   const errPage = intent === "signup" ? "signup.html" : "login.html";
 
   try {
@@ -322,7 +428,8 @@ router.get("/google", (req, res) => {
     }
     const state = newOAuthState();
     setOAuthStateCookie(res, state);
-    setOAuthModeCookie(res, intent === "signup" ? `signup:${role}` : "login");
+    // Signup via Google is always patient — ignore any role query param.
+    setOAuthModeCookie(res, intent === "signup" ? "signup" : "login");
     return res.redirect(buildGoogleAuthUrl(state));
   } catch (err) {
     return res.redirect(authRedirectError(friendlyGoogleError(err), errPage));
@@ -371,14 +478,22 @@ router.get("/google/callback", async (req, res) => {
     const profile = await exchangeCodeAndVerify(code);
     const user =
       mode.intent === "signup"
-        ? await createOrSignInGoogleUser(profile, mode.role)
+        ? await createOrSignInGooglePatient(profile)
         : await resolveRegisteredGoogleUser(profile);
+
+    try {
+      await assertStaffActive(user);
+    } catch (err) {
+      const e = err as Error;
+      return res.redirect(authRedirectError(e.message, "login.html"));
+    }
 
     const token = signToken({
       sub: user.id,
       email: user.email,
       role: user.role as Role,
       name: user.name,
+      tv: user.tokenVersion ?? 0,
       staffId: user.staffId,
       patientId: user.patientId,
       ward: user.ward,
@@ -387,13 +502,11 @@ router.get("/google/callback", async (req, res) => {
     });
     setSessionCookie(res, token);
 
-    await prisma.auditLog.create({
-      data: {
-        actorId: user.id,
-        action: mode.intent === "signup" ? "auth.google_signup" : "auth.google",
-        entity: "User",
-        metaJson: JSON.stringify({ sub: profile.sub, email: profile.email, role: user.role }),
-      },
+    await writeAudit({
+      actorId: user.id,
+      action: mode.intent === "signup" ? "auth.google_signup" : "auth.google",
+      entity: "User",
+      meta: { role: user.role },
     });
 
     const dest = new URL("app.html", frontendOrigin().endsWith("/") ? frontendOrigin() : `${frontendOrigin()}/`);
@@ -404,41 +517,47 @@ router.get("/google/callback", async (req, res) => {
   }
 });
 
-router.post("/logout", (_req, res) => {
-  clearSessionCookie(res);
-  clearOAuthStateCookie(res);
-  clearOAuthModeCookie(res);
-  res.json({ ok: true });
+/** Logout is POST-only (not GET) so links/prefetch cannot revoke sessions. */
+router.get("/logout", (_req, res) => {
+  res.set("Allow", "POST");
+  res.status(405).json({ error: "Use POST /api/auth/logout to sign out." });
 });
 
-router.get("/logout", (_req, res) => {
-  clearSessionCookie(res);
-  clearOAuthStateCookie(res);
-  clearOAuthModeCookie(res);
-  const dest = new URL("login.html", frontendOrigin().endsWith("/") ? frontendOrigin() : `${frontendOrigin()}/`);
-  res.redirect(dest.toString());
+router.post("/logout", async (req, res, next) => {
+  try {
+    const token = tokenFromRequest(req);
+    if (token) {
+      try {
+        const payload = verifyToken(token);
+        await bumpTokenVersion(payload.sub);
+      } catch {
+        /* ignore invalid cookie */
+      }
+    }
+    clearSessionCookie(res);
+    clearOAuthStateCookie(res);
+    clearOAuthModeCookie(res);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.get("/me", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
     if (!user) return res.status(404).json({ error: "User not found." });
+    try {
+      await assertStaffActive(user);
+    } catch (err) {
+      const e = err as Error & { status?: number };
+      clearSessionCookie(res);
+      return res.status(e.status || 403).json({ error: e.message });
+    }
     res.json({ user: publicUser(user) });
   } catch (err) {
     next(err);
   }
-});
-
-router.get("/demo-accounts", (_req, res) => {
-  res.json({
-    password: "filfilu",
-    accounts: [
-      { email: "admin@filfilu.com", role: "admin", name: "Selam Bekele" },
-      { email: "doctor@filfilu.com", role: "doctor", name: "Dr. Helen Tesfaye" },
-      { email: "nurse@filfilu.com", role: "nurse", name: "Rahel Abebe" },
-      { email: "patient@filfilu.com", role: "patient", name: "Amina Mohammed" },
-    ],
-  });
 });
 
 export default router;
