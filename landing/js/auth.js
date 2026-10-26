@@ -4,12 +4,18 @@
  */
 (function (global) {
   const SESSION_KEY = "filfilu.session";
+  const configuredApi = String(global.FILFILU_API_BASE || "").trim();
+  const onGithubPages =
+    typeof location !== "undefined" && /\.github\.io$/i.test(location.hostname || "");
   const API_BASE = (
-    global.FILFILU_API_BASE ||
-    (typeof location !== "undefined" && location.origin && location.protocol !== "file:"
-      ? `${location.origin}/api`
-      : "http://127.0.0.1:8080/api")
+    configuredApi ||
+    (onGithubPages
+      ? "" // require explicit FILFILU_API_BASE on Pages — same-origin /api does not exist there
+      : typeof location !== "undefined" && location.origin && location.protocol !== "file:"
+        ? `${location.origin}/api`
+        : "http://127.0.0.1:8080/api")
   ).replace(/\/$/, "");
+  const STATIC_HOST = Boolean(global.FILFILU_STATIC_HOST) || (onGithubPages && !configuredApi);
 
   /** @typedef {"admin"|"doctor"|"nurse"|"patient"} Role */
 
@@ -128,12 +134,12 @@
 
     const DB = {
     users: [
-      { id: "u-admin", role: "admin", name: "Selam Bekele", email: "admin@filfilu.com", password: "filfilu", title: "Hospital Administrator" },
-      { id: "u-doc-1", role: "doctor", name: "Dr. Helen Tesfaye", email: "doctor@filfilu.com", password: "filfilu", staffId: "s-doc-1", dept: "General Medicine", title: "Consultant Physician" },
-      { id: "u-doc-2", role: "doctor", name: "Dr. Sara Mekonnen", email: "sara@filfilu.com", password: "filfilu", staffId: "s-doc-2", dept: "Cardiology", title: "Cardiologist" },
-      { id: "u-nurse-1", role: "nurse", name: "Rahel Abebe", email: "nurse@filfilu.com", password: "filfilu", staffId: "s-nurse-1", ward: "Ward A", dept: "Maternity", title: "Senior Nurse" },
-      { id: "u-pat-1", role: "patient", name: "Amina Mohammed", email: "patient@filfilu.com", password: "filfilu", patientId: "p-1", title: "Patient" },
-      { id: "u-pat-2", role: "patient", name: "Yonas Hailu", email: "yonas@filfilu.com", password: "filfilu", patientId: "p-2", title: "Patient" },
+      { id: "u-admin", role: "admin", name: "Selam Bekele", email: "admin@filfilu.com", title: "Hospital Administrator" },
+      { id: "u-doc-1", role: "doctor", name: "Dr. Helen Tesfaye", email: "doctor@filfilu.com", staffId: "s-doc-1", dept: "General Medicine", title: "Consultant Physician" },
+      { id: "u-doc-2", role: "doctor", name: "Dr. Sara Mekonnen", email: "sara@filfilu.com", staffId: "s-doc-2", dept: "Cardiology", title: "Cardiologist" },
+      { id: "u-nurse-1", role: "nurse", name: "Rahel Abebe", email: "nurse@filfilu.com", staffId: "s-nurse-1", ward: "Ward A", dept: "Maternity", title: "Senior Nurse" },
+      { id: "u-pat-1", role: "patient", name: "Amina Mohammed", email: "patient@filfilu.com", patientId: "p-1", title: "Patient" },
+      { id: "u-pat-2", role: "patient", name: "Yonas Hailu", email: "yonas@filfilu.com", patientId: "p-2", title: "Patient" },
     ],
     staff: [
       { id: "s-doc-1", name: "Dr. Helen Tesfaye", role: "doctor", dept: "General Medicine", status: "active", phone: "+251 911 100 001" },
@@ -240,21 +246,21 @@
   function readSession() {
     try {
       const raw = sessionStorage.getItem(SESSION_KEY);
-      return raw ? JSON.parse(raw) : null;
+      return sanitizeStoredSession(raw ? JSON.parse(raw) : null);
     } catch {
       return null;
     }
   }
 
   function writeSession(session) {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(sanitizeStoredSession({ ...session }) || session));
   }
 
   function clearSession() {
     sessionStorage.removeItem(SESSION_KEY);
   }
 
-  function toSession(user, token) {
+  function toSession(user) {
     const role = normalizeRole(user.role);
     const userId = user.userId || user.id;
     return {
@@ -269,21 +275,34 @@
       dept: user.dept || null,
       meta: roleMeta(role),
       permissions: (user.permissions && user.permissions.length ? user.permissions : PERMISSIONS[role]).slice(),
-      token: token || null,
-      source: token ? "api" : "local",
+      // Auth is httpOnly-cookie only — never store a JWT in sessionStorage.
+      cookieAuth: true,
+      source: "api",
       loggedInAt: new Date().toISOString(),
     };
   }
 
+  function sanitizeStoredSession(session) {
+    if (!session || typeof session !== "object") return null;
+    // Drop any legacy JWT that may still sit in older sessionStorage blobs.
+    if ("token" in session) delete session.token;
+    session.cookieAuth = true;
+    return session;
+  }
+
   async function api(path, options = {}) {
+    if (!API_BASE) {
+      const err = new Error(
+        "This is a static Filfilu page (e.g. GitHub Pages) with no API URL. Run the Express app locally, or set window.FILFILU_API_BASE to your HTTPS API.",
+      );
+      err.status = 0;
+      throw err;
+    }
     const headers = { ...(options.headers || {}) };
     if (options.body != null && !headers["Content-Type"]) {
       headers["Content-Type"] = "application/json";
     }
-    const session = readSession();
-    if (session?.token && session.token !== "cookie" && !headers.Authorization) {
-      headers.Authorization = `Bearer ${session.token}`;
-    }
+    // Cookie session only — do not attach Authorization from storage.
     const res = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers,
@@ -311,8 +330,7 @@
     try {
       const body = await api("/auth/me");
       if (!body?.user) return null;
-      const session = toSession(body.user, "cookie");
-      session.cookieAuth = true;
+      const session = toSession(body.user);
       writeSession(session);
       return session;
     } catch {
@@ -322,14 +340,13 @@
 
   /**
    * Start Google OAuth.
-   * @param {{ intent?: "login"|"signup", role?: string }} [opts]
-   * - login: only existing Filfilu accounts
-   * - signup: create account for new Google email (role defaults to patient)
+   * @param {{ intent?: "login"|"signup" }} [opts]
+   * - login: only existing Filfilu accounts (any role created by admin or prior signup)
+   * - signup: create a patient account for a new Google email only
    */
   function beginGoogleSignIn(opts = {}) {
     const intent = opts.intent === "signup" ? "signup" : "login";
     const params = new URLSearchParams({ intent });
-    if (intent === "signup" && opts.role) params.set("role", opts.role);
     location.href = `${API_BASE}/auth/google?${params}`;
   }
 
@@ -343,7 +360,7 @@
   }
 
   async function hydrateFromApi(session) {
-    if (!session?.token && !session?.cookieAuth) return session;
+    if (!session?.cookieAuth) return session;
     const [staff, patients, appointments, shifts, exchanges, notifications, doctors, schedules, stats, activity] =
       await Promise.all([
         api("/staff").catch(() => null),
@@ -488,42 +505,6 @@
     return [...groups.values()].filter((g) => g.length > 1);
   }
 
-  function loginLocal({ email, password, role }) {
-    const wanted = normalizeRole(role);
-    const found = DB.users.find(
-      (u) => u.email.toLowerCase() === String(email || "").trim().toLowerCase(),
-    );
-
-    if (found) {
-      if (found.password !== password) {
-        return { ok: false, error: "Incorrect password for this account." };
-      }
-      if (wanted && wanted !== found.role) {
-        return {
-          ok: false,
-          error: `This account is assigned the ${roleMeta(found.role).label} role. Choose “${roleMeta(found.role).short}” or use another demo account.`,
-        };
-      }
-      const session = toSession(found, null);
-      writeSession(session);
-      return { ok: true, session, offline: true };
-    }
-
-    if (!wanted) return { ok: false, error: "Select a workspace role before signing in." };
-    if (!password) return { ok: false, error: "Enter your password." };
-    const template = DB.users.find((u) => u.role === wanted);
-    const session = toSession({
-      ...template,
-      id: `u-demo-${wanted}-${Date.now()}`,
-      name: template.name,
-      email: String(email).trim(),
-      role: wanted,
-    }, null);
-    session.demo = true;
-    writeSession(session);
-    return { ok: true, session, demo: true, offline: true };
-  }
-
   /** Perfect role assignment: account role always wins when email matches. */
   async function login({ email, password, role }) {
     try {
@@ -531,7 +512,7 @@
         method: "POST",
         body: JSON.stringify({ email, password, role: role || undefined }),
       });
-      const session = toSession(body.user, body.token);
+      const session = toSession(body.user);
       writeSession(session);
       await hydrateFromApi(session);
       return { ok: true, session };
@@ -547,45 +528,26 @@
     }
   }
 
-  function signupLocal({ first, last, email, role, password }) {
-    const r = normalizeRole(role);
-    if (!r) return { ok: false, error: "Choose a valid role to assign." };
-    if (!password || password.length < 6) return { ok: false, error: "Password must be at least 6 characters." };
-    const exists = DB.users.some((u) => u.email.toLowerCase() === String(email).trim().toLowerCase());
-    if (exists) return { ok: false, error: "An account with this email already exists. Please login." };
-
-    const template = DB.users.find((u) => u.role === r);
-    const session = toSession({
-      id: `u-new-${Date.now()}`,
-      role: r,
-      name: `${first} ${last}`.trim(),
-      email: String(email).trim(),
-      title: roleMeta(r).label,
-      staffId: template.staffId || null,
-      patientId: r === "patient" ? template.patientId || "p-1" : null,
-      ward: template.ward || null,
-      dept: template.dept || null,
-    }, null);
-    session.demo = true;
-    writeSession(session);
-    return { ok: true, session, offline: true };
-  }
-
   async function signup({ first, last, email, role, password }) {
-    const r = normalizeRole(role);
-    if (!r) return { ok: false, error: "Choose a valid role to assign." };
+    // Public signup is patient-only (server also enforces this).
+    if (role && normalizeRole(role) && normalizeRole(role) !== "patient") {
+      return {
+        ok: false,
+        error: "Only patients can create an account. Doctors and nurses are registered by an administrator.",
+      };
+    }
     if (!password || password.length < 6) return { ok: false, error: "Password must be at least 6 characters." };
     try {
       const body = await api("/auth/signup", {
         method: "POST",
-        body: JSON.stringify({ first, last, email, password, role: r }),
+        body: JSON.stringify({ first, last, email, password, role: "patient" }),
       });
-      const session = toSession(body.user, body.token);
+      const session = toSession(body.user);
       writeSession(session);
       await hydrateFromApi(session);
       return { ok: true, session };
     } catch (err) {
-      if (err.status === 409 || err.status === 400) {
+      if (err.status === 409 || err.status === 400 || err.status === 403) {
         return { ok: false, error: err.message || "Sign up failed." };
       }
       return {
@@ -593,6 +555,11 @@
         error: err.message || "Cannot reach the Filfilu API on this site. Start the app, then try again.",
       };
     }
+  }
+
+  /** Admin: create doctor or nurse login accounts. */
+  async function createStaffAccount(payload) {
+    return api("/staff/accounts", { method: "POST", body: JSON.stringify(payload) });
   }
 
   async function postContact(payload) {
@@ -605,7 +572,7 @@
 
   function requireAuth() {
     const session = readSession();
-    const hasAuth = session && normalizeRole(session.role) && (session.token || session.cookieAuth);
+    const hasAuth = session && normalizeRole(session.role) && session.cookieAuth;
     if (!hasAuth) {
       clearSession();
       location.href = "login.html";
@@ -621,7 +588,7 @@
 
   async function bootWorkspace() {
     let session = readSession();
-    if (!session?.token && !session?.cookieAuth) {
+    if (!session?.cookieAuth) {
       session = await restoreSessionFromCookie();
     }
     if (!session || !normalizeRole(session.role)) {
@@ -809,6 +776,7 @@
     NAV,
     DB,
     API_BASE,
+    STATIC_HOST,
     api,
     login,
     signup,
@@ -826,6 +794,7 @@
     updateAppointmentStatus,
     respondToExchange,
     updateStaff,
+    createStaffAccount,
     cleanupDuplicateAppointments,
     findDuplicateAppointmentGroups,
     logout,

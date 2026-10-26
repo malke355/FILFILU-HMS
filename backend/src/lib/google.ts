@@ -17,15 +17,27 @@ function requireEnv(name: string): string {
   return v;
 }
 
+/**
+ * Default skew is 5 minutes (library-safe).
+ * Local broken Windows clocks may set GOOGLE_CLOCK_TOLERANCE_SEC higher (never in production).
+ */
 function clockSkewSeconds() {
-  const skew = Number(process.env.GOOGLE_CLOCK_TOLERANCE_SEC || 86400);
-  return Number.isFinite(skew) && skew >= 0 ? skew : 86400;
+  const fallback = 300;
+  const raw = process.env.GOOGLE_CLOCK_TOLERANCE_SEC;
+  if (raw == null || raw === "") return fallback;
+  const skew = Number(raw);
+  if (!Number.isFinite(skew) || skew < 0) return fallback;
+  if (process.env.NODE_ENV === "production" && skew > 300) {
+    throw new Error(
+      "GOOGLE_CLOCK_TOLERANCE_SEC cannot exceed 300 seconds in production. Fix server clock sync instead.",
+    );
+  }
+  return skew;
 }
 
 /**
  * google-auth-library v10+ hardcodes CLOCK_SKEW_SECS_ = 300 and ignores
- * `client.clockTolerance`. Windows demo clocks are often hours off, which
- * surfaces as "Token used too late" with a raw JWT dump. Widen skew for local use.
+ * `client.clockTolerance`. Override only when env asks (local clock drift).
  */
 function applyLibraryClockSkew() {
   const skew = clockSkewSeconds();
@@ -36,6 +48,38 @@ function applyLibraryClockSkew() {
 }
 
 applyLibraryClockSkew();
+
+/** Fail fast in production if OAuth / frontend URLs are still localhost. */
+export function assertGoogleProductionConfig() {
+  if (process.env.NODE_ENV !== "production") return;
+  // Re-validate skew rule at startup even if Google is unused.
+  clockSkewSeconds();
+
+  const redirect = process.env.GOOGLE_REDIRECT_URI?.trim() || "";
+  const front = process.env.FRONTEND_ORIGIN?.trim() || "";
+  const cors = process.env.CORS_ORIGIN?.trim() || "";
+
+  if (googleConfigured()) {
+    if (/localhost|127\.0\.0\.1/i.test(redirect)) {
+      throw new Error(
+        "GOOGLE_REDIRECT_URI must be your public HTTPS callback in production (not localhost). Register it in Google Cloud Console too.",
+      );
+    }
+    if (!redirect.startsWith("https://")) {
+      throw new Error("GOOGLE_REDIRECT_URI must use https:// in production.");
+    }
+  }
+
+  if (front && /localhost|127\.0\.0\.1/i.test(front)) {
+    throw new Error("FRONTEND_ORIGIN must be your public HTTPS site origin in production (not localhost).");
+  }
+  if (front && !front.startsWith("https://")) {
+    throw new Error("FRONTEND_ORIGIN must use https:// in production.");
+  }
+  if (cors && /localhost|127\.0\.0\.1/i.test(cors)) {
+    throw new Error("CORS_ORIGIN must not include localhost in production.");
+  }
+}
 
 export function googleConfigured() {
   return Boolean(
@@ -60,6 +104,9 @@ export function friendlyGoogleError(err: unknown): string {
     return "Your computer’s date & time is out of sync with Google. In Windows: Settings → Time & language → Date & time → turn on “Set time automatically”, then try Sign in with Google again.";
   }
   if (/No Filfilu account found/i.test(message)) {
+    return message;
+  }
+  if (/already uses a password|Forgot password|cannot attach/i.test(message)) {
     return message;
   }
   if (/Wrong recipient|audience|invalid token|jwt/i.test(message) || message.includes("{") || message.includes("iat")) {

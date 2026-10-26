@@ -19,6 +19,8 @@ model User {
   picture       String?
   googleSub     String?  @unique
   emailVerified Boolean  @default(false)
+  // Bumped on logout / deactivate / role change / password reset to revoke JWTs early.
+  tokenVersion  Int      @default(0)
   staffId       String?  @unique
   patientId     String?  @unique
   ward          String?
@@ -26,9 +28,24 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  staff         Staff?         @relation(fields: [staffId], references: [id])
-  patient       Patient?       @relation(fields: [patientId], references: [id])
-  notifications Notification[]
+  staff               Staff?               @relation(fields: [staffId], references: [id])
+  patient             Patient?             @relation(fields: [patientId], references: [id])
+  notifications       Notification[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+// One-time tokens for server-side password reset (not Firebase).
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Department {
@@ -74,6 +91,9 @@ model Patient {
   doctor       Staff?        @relation("PrimaryDoctor", fields: [doctorId], references: [id])
   user         User?
   appointments Appointment[]
+
+  @@index([doctorId])
+  @@index([ward])
 }
 
 model Appointment {
@@ -90,6 +110,11 @@ model Appointment {
 
   patient Patient @relation(fields: [patientId], references: [id])
   doctor  Staff   @relation("DoctorAppointments", fields: [doctorId], references: [id])
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([doctorId, date, time])
+  @@index([status])
 }
 
 model Shift {
@@ -103,6 +128,10 @@ model Shift {
   createdAt DateTime @default(now())
 
   staff Staff @relation(fields: [staffId], references: [id])
+
+  @@index([staffId])
+  @@index([date])
+  @@index([status])
 }
 
 model Exchange {
@@ -117,6 +146,10 @@ model Exchange {
 
   fromStaff Staff @relation("ExchangeFrom", fields: [fromStaffId], references: [id])
   toStaff   Staff @relation("ExchangeTo", fields: [toStaffId], references: [id])
+
+  @@index([fromStaffId])
+  @@index([toStaffId])
+  @@index([status])
 }
 
 model DoctorPublic {
@@ -141,6 +174,10 @@ model DoctorSchedule {
   status    String @default("open")
 
   doctor Staff @relation(fields: [doctorId], references: [id])
+
+  @@index([doctorId])
+  @@index([doctorId, date])
+  @@index([specialty])
 }
 
 model Notification {
@@ -153,6 +190,9 @@ model Notification {
   createdAt DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([role])
 }
 
 model ContactMessage {
@@ -180,4 +220,7 @@ model AuditLog {
   entity    String?
   metaJson  String?
   createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
 }

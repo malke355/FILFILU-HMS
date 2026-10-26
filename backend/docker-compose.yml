@@ -1,21 +1,10 @@
-services:
-  db:
-    image: postgres:16-alpine
-    container_name: filfilu-postgres
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: filfilu
-      POSTGRES_PASSWORD: filfilu
-      POSTGRES_DB: filfilu
-    volumes:
-      - filfilu_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U filfilu -d filfilu"]
-      interval: 3s
-      timeout: 5s
-      retries: 20
-
-volumes:
-  filfilu_pgdata:
+# DEPRECATED — do not use this file.
+# Filfilu HMS Postgres is defined in docker-compose.hms.yml (loopback bind + .env secrets).
+#
+#   cd backend
+#   $env:HMS_PG_PORT=5434
+#   docker compose -f docker-compose.hms.yml --env-file .env up -d
+#
+# This stub has no services so an accidental `docker compose up` cannot start a
+# weak/open database.
+services: {}

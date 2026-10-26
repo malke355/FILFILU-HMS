@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { pool } from "../db/pool.js";
+import { pageMeta, parsePage } from "../lib/pagination.js";
 import { prisma } from "../lib/prisma.js";
 import { can } from "../lib/rbac.js";
 import { optionalAuth, requireAuth, type AuthedRequest } from "../middleware/auth.js";
@@ -8,23 +8,19 @@ const router = Router();
 
 router.get("/health", async (_req, res) => {
   try {
-    await pool.query("SELECT 1");
+    await prisma.$queryRaw`SELECT 1`;
     res.json({
       ok: true,
       service: "filfilu-api",
       database: "up",
-      host: process.env.PGHOST || "from DATABASE_URL",
-      port: process.env.PGPORT || "from DATABASE_URL",
-      name: process.env.PGDATABASE || "from DATABASE_URL",
       time: new Date().toISOString(),
     });
   } catch {
+    // No stack, host, or migration hints — keep health responses opaque.
     res.status(503).json({
       ok: false,
       service: "filfilu-api",
       database: "down",
-      error:
-        "Database unreachable. Check PostgreSQL is running and .env (PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD).",
       time: new Date().toISOString(),
     });
   }
@@ -43,12 +39,18 @@ router.get("/departments", async (_req, res, next) => {
 });
 
 /** Public doctor directory (patients + anonymous landing). */
-router.get("/doctors", optionalAuth, async (_req, res, next) => {
+router.get("/doctors", optionalAuth, async (req, res, next) => {
   try {
-    const rows = await prisma.doctorPublic.findMany({
-      include: { doctor: { select: { id: true, name: true, status: true } } },
-      orderBy: { specialty: "asc" },
-    });
+    const { page, limit, skip } = parsePage(req);
+    const [total, rows] = await Promise.all([
+      prisma.doctorPublic.count(),
+      prisma.doctorPublic.findMany({
+        include: { doctor: { select: { id: true, name: true, status: true } } },
+        orderBy: { specialty: "asc" },
+        skip,
+        take: limit,
+      }),
+    ]);
     res.json({
       data: rows.map((r) => ({
         id: r.doctorId,
@@ -59,6 +61,7 @@ router.get("/doctors", optionalAuth, async (_req, res, next) => {
         rating: r.rating,
         status: r.doctor.status,
       })),
+      meta: pageMeta(total, page, limit),
     });
   } catch (err) {
     next(err);
@@ -73,11 +76,18 @@ router.get("/doctor-schedules", requireAuth, async (req: AuthedRequest, res, nex
       return res.status(403).json({ error: "Missing permission." });
     }
     const specialty = typeof req.query.specialty === "string" ? req.query.specialty : undefined;
-    const rows = await prisma.doctorSchedule.findMany({
-      where: specialty ? { specialty } : undefined,
-      include: { doctor: { select: { id: true, name: true } } },
-      orderBy: [{ date: "asc" }, { specialty: "asc" }],
-    });
+    const where = specialty ? { specialty } : undefined;
+    const { page, limit, skip } = parsePage(req);
+    const [total, rows] = await Promise.all([
+      prisma.doctorSchedule.count({ where }),
+      prisma.doctorSchedule.findMany({
+        where,
+        include: { doctor: { select: { id: true, name: true } } },
+        orderBy: [{ date: "asc" }, { specialty: "asc" }],
+        skip,
+        take: limit,
+      }),
+    ]);
     res.json({
       data: rows.map((r) => ({
         id: r.id,
@@ -90,6 +100,7 @@ router.get("/doctor-schedules", requireAuth, async (req: AuthedRequest, res, nex
         room: r.room,
         status: r.status,
       })),
+      meta: pageMeta(total, page, limit),
     });
   } catch (err) {
     next(err);

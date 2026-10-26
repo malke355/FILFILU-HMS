@@ -643,6 +643,7 @@
     </div>
   </dialog>
 
+  <script src="js/config.js?v=1"></script>
   <script src="js/i18n.js"></script>
   <script>
     (() => {
@@ -858,7 +859,7 @@
       }));
       document.getElementById("closeDialog").addEventListener("click", () => dialog.close());
       dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); });
-      const API = (window.FILFILU_API_BASE || `${location.origin}/api`).replace(/\/$/, "");
+      const API = (window.FILFILU_API_BASE || (/\.github\.io$/i.test(location.hostname) ? "" : `${location.origin}/api`)).replace(/\/$/, "");
       async function postApi(path, payload) {
         const res = await fetch(`${API}${path}`, {
           method: "POST",

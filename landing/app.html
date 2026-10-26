@@ -8,8 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="js/config.js?v=1"></script>
   <script src="js/i18n.js?v=2"></script>
-  <script src="js/auth.js?v=2"></script>
+  <script src="js/auth.js?v=5"></script>
   <style>
     :root {
       --bg: #F4F7FB; --panel: #FFFFFF; --navy: #0B2447; --blue: #1D6FE0; --teal: #1BB6A8;
@@ -358,12 +359,21 @@
         showToast._t = setTimeout(() => toast.classList.remove("show"), 2200);
       }
 
+      function esc(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
       function badge(status) {
         const s = String(status || "");
         const cls = /confirm|publish|active|approved|ok|completed/i.test(s) ? "ok"
           : /draft|pending|request|peer/i.test(s) ? "warn"
           : /deny|cancel|fail|no.?show/i.test(s) ? "danger" : "";
-        return `<span class="badge ${cls}">${s.replaceAll("_", " ")}</span>`;
+        return `<span class="badge ${cls}">${esc(s.replaceAll("_", " "))}</span>`;
       }
 
       function isUrgentReason(reason) {
@@ -371,7 +381,7 @@
       }
 
       function reasonCell(reason, dept) {
-        const text = reason || dept || "—";
+        const text = esc(reason || dept || "—");
         const urgent = isUrgentReason(reason)
           ? `<span class="badge urgent" title="Priority review">Urgent</span>`
           : "";
@@ -398,38 +408,40 @@
 
       function renderOverview() {
         const stats = Auth.statsFor(session).map((s) =>
-          `<div class="stat"><strong>${s.value}</strong><span>${s.label}</span><small>${s.hint}</small></div>`).join("");
+          `<div class="stat"><strong>${esc(s.value)}</strong><span>${esc(s.label)}</span><small>${esc(s.hint)}</small></div>`).join("");
         const actions = Auth.quickActions(session).map((a) =>
-          `<button class="btn soft" type="button" data-go="${a.view}">${a.label}</button>`).join("");
+          `<button class="btn soft" type="button" data-go="${esc(a.view)}">${esc(a.label)}</button>`).join("");
         const notes = Auth.rls.notifications(session).slice(0, 5).map((n) =>
           `<div class="list-item"><span class="dot ${n.level === "warn" ? "warn" : n.level === "ok" ? "ok" : ""}"></span>
-            <div><strong>${n.text}</strong><p>Priority inbox for ${session.meta.short}</p></div>
-            <time>${n.time}</time></div>`).join("");
+            <div><strong>${esc(n.text)}</strong><p>Priority inbox for ${esc(session.meta.short)}</p></div>
+            <time>${esc(n.time)}</time></div>`).join("");
         const activity = Auth.rls.activity(session).slice(0, 5).map((a) =>
-          `<div class="list-item"><span class="dot"></span><div><strong>${a.text}</strong><p>Recent activity</p></div><time>${a.time}</time></div>`).join("");
+          `<div class="list-item"><span class="dot"></span><div><strong>${esc(a.text)}</strong><p>Recent activity</p></div><time>${esc(a.time)}</time></div>`).join("");
 
         const greeting = t(`role.${session.role}.greeting`);
         const blurb = t(`role.${session.role}.blurb`);
+        const greetingText = greeting === `role.${session.role}.greeting` ? session.meta.greeting : greeting;
+        const blurbText = blurb === `role.${session.role}.blurb` ? session.meta.blurb : blurb;
         return `
           <section class="hero">
-            <div class="kicker">${greeting === `role.${session.role}.greeting` ? session.meta.greeting : greeting}</div>
-            <h2>${t("app.welcomeBack", { name: session.name.split(" ")[0] })}</h2>
-            <p>${blurb === `role.${session.role}.blurb` ? session.meta.blurb : blurb}</p>
+            <div class="kicker">${esc(greetingText)}</div>
+            <h2>${esc(t("app.welcomeBack", { name: session.name.split(" ")[0] }))}</h2>
+            <p>${esc(blurbText)}</p>
             <div class="hero-meta">
-              <span class="chip">Role · ${session.meta.label}</span>
-              <span class="chip">${session.dept || session.ward || "Filfilu HMS"}</span>
-              <span class="chip">${session.permissions.length} permissions</span>
-              <span class="chip">${t("app.liveApi")}</span>
+              <span class="chip">Role · ${esc(session.meta.label)}</span>
+              <span class="chip">${esc(session.dept || session.ward || "Filfilu HMS")}</span>
+              <span class="chip">${esc(session.permissions.length)} permissions</span>
+              <span class="chip">${esc(t("app.liveApi"))}</span>
             </div>
           </section>
           <div class="stats">${stats}</div>
           <div class="panel" style="margin-bottom:1rem">
-            <div class="panel-h"><h3>${t("app.quickActions")}</h3><span>${t("app.roleShortcuts")}</span></div>
+            <div class="panel-h"><h3>${esc(t("app.quickActions"))}</h3><span>${esc(t("app.roleShortcuts"))}</span></div>
             <div class="actions">${actions}</div>
           </div>
           <div class="grid-2">
-            <div class="panel"><div class="panel-h"><h3>${t("app.alerts")}</h3><span>${Auth.rls.notifications(session).length} items</span></div><div class="list">${notes || `<div class="empty">${t("app.noAlerts")}</div>`}</div></div>
-            <div class="panel"><div class="panel-h"><h3>${t("app.activity")}</h3><span>${t("app.latest")}</span></div><div class="list">${activity || `<div class="empty">${t("app.noActivity")}</div>`}</div></div>
+            <div class="panel"><div class="panel-h"><h3>${esc(t("app.alerts"))}</h3><span>${Auth.rls.notifications(session).length} items</span></div><div class="list">${notes || `<div class="empty">${esc(t("app.noAlerts"))}</div>`}</div></div>
+            <div class="panel"><div class="panel-h"><h3>${esc(t("app.activity"))}</h3><span>${esc(t("app.latest"))}</span></div><div class="list">${activity || `<div class="empty">${esc(t("app.noActivity"))}</div>`}</div></div>
           </div>`;
       }
 
@@ -450,16 +462,38 @@
               const actions = [];
               if (canWrite) {
                 if (s.status === "active") {
-                  actions.push(`<button class="btn soft tiny" type="button" data-staff-action="deactivate" data-id="${s.id}" data-name="${s.name}">Deactivate</button>`);
+                  actions.push(`<button class="btn soft tiny" type="button" data-staff-action="deactivate" data-id="${esc(s.id)}" data-name="${esc(s.name)}">Deactivate</button>`);
                 } else {
-                  actions.push(`<button class="btn tiny" type="button" data-staff-action="reactivate" data-id="${s.id}" data-name="${s.name}">Reactivate</button>`);
+                  actions.push(`<button class="btn tiny" type="button" data-staff-action="reactivate" data-id="${esc(s.id)}" data-name="${esc(s.name)}">Reactivate</button>`);
                 }
               }
-              return `<tr><td><strong>${s.name}</strong></td><td>${badge(s.role)}</td><td>${s.dept}${s.ward ? " · " + s.ward : ""}</td><td>${s.phone || "—"}</td><td>${badge(s.status)}</td>${canWrite ? `<td class="row-actions">${actions.join("") || "—"}</td>` : ""}</tr>`;
+              return `<tr><td><strong>${esc(s.name)}</strong></td><td>${badge(s.role)}</td><td>${esc(s.dept)}${s.ward ? " · " + esc(s.ward) : ""}</td><td>${esc(s.phone || "—")}</td><td>${badge(s.status)}</td>${canWrite ? `<td class="row-actions">${actions.join("") || "—"}</td>` : ""}</tr>`;
             }));
           if (canWrite) {
-            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>User &amp; role management</h3><span>API · staff:write</span></div>
-              <p class="help-copy">Admins set up accounts and access — they do not do clinical work. Deactivate leavers instead of deleting so history and audit trails stay intact. You cannot deactivate your own account.</p></div>` + html;
+            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Register doctor or nurse</h3><span>Admin only · staff:write</span></div>
+              <p class="help-copy">Only patients can self-register. Create doctor and nurse login accounts here — they sign in on the login page. For nurses, set their ward explicitly (it is never copied from another nurse).</p>
+              <form id="createStaffForm" class="visit-form open" style="margin-top:.75rem">
+                <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+                  <label>First name<input name="first" required autocomplete="off" /></label>
+                  <label>Last name<input name="last" required autocomplete="off" /></label>
+                  <label>Email<input name="email" type="email" required autocomplete="off" /></label>
+                  <label>Temporary password<input name="password" type="password" required minlength="6" autocomplete="new-password" /></label>
+                  <label>Role
+                    <select name="role" id="createStaffRole" required>
+                      <option value="doctor">Doctor</option>
+                      <option value="nurse">Nurse</option>
+                    </select>
+                  </label>
+                  <label>Department<input name="dept" placeholder="e.g. Cardiology" /></label>
+                  <label>Ward (required for nurses)<input name="ward" id="createStaffWard" placeholder="e.g. Ward A" /></label>
+                  <label>Phone<input name="phone" placeholder="+251 …" /></label>
+                </div>
+                <div class="actions" style="margin-top:.85rem"><button class="btn" type="submit">Create staff account</button></div>
+                <p id="createStaffMsg" class="help-copy" style="margin:.65rem 0 0" hidden></p>
+              </form>
+            </div>
+            <div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>User &amp; role management</h3><span>API · staff:write</span></div>
+              <p class="help-copy">Deactivate leavers instead of deleting so history and audit trails stay intact. You cannot deactivate your own account.</p></div>` + html;
           }
         }
 
@@ -469,7 +503,7 @@
           const published = shifts.filter((s) => s.status === "published").length;
           html = table(["Date", "Staff", "Unit", "Slot", "Department", "Status"],
             shifts.map((s) =>
-              `<tr><td>${s.date}</td><td>${Auth.staffName(s.staffId)}</td><td>${s.unit || "—"}</td><td>${s.slot}</td><td>${s.dept}</td><td>${badge(s.status)}</td></tr>`));
+              `<tr><td>${esc(s.date)}</td><td>${esc(Auth.staffName(s.staffId))}</td><td>${esc(s.unit || "—")}</td><td>${esc(s.slot)}</td><td>${esc(s.dept)}</td><td>${badge(s.status)}</td></tr>`));
           if (Auth.can(session, "schedule:publish")) {
             html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Publish roster</h3><span>${drafts} draft · ${published} published</span></div>
               <p class="help-copy">Keep rosters in draft until ready. Publishing notifies staff. Check coverage before you publish so units are not left empty.</p>
@@ -492,25 +526,25 @@
           html = table(headers, rows.map((a) => {
               const actions = [];
               if (isDoctor && a.doctorId === session.staffId && a.status === "requested") {
-                actions.push(`<button class="btn tiny" type="button" data-appt-action="confirm" data-id="${a.id}">Confirm</button>`);
-                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="reschedule" data-id="${a.id}" data-date="${a.date}" data-time="${a.time}">Reschedule</button>`);
-                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${a.id}">Decline</button>`);
+                actions.push(`<button class="btn tiny" type="button" data-appt-action="confirm" data-id="${esc(a.id)}">Confirm</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="reschedule" data-id="${esc(a.id)}" data-date="${esc(a.date)}" data-time="${esc(a.time)}">Reschedule</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${esc(a.id)}">Decline</button>`);
               }
               if (isDoctor && a.doctorId === session.staffId && a.status === "confirmed") {
-                actions.push(`<button class="btn tiny" type="button" data-appt-action="complete" data-id="${a.id}">Complete</button>`);
-                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="no_show" data-id="${a.id}">No-show</button>`);
+                actions.push(`<button class="btn tiny" type="button" data-appt-action="complete" data-id="${esc(a.id)}">Complete</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="no_show" data-id="${esc(a.id)}">No-show</button>`);
               }
               if (isAdminOps && (a.status === "requested" || a.status === "confirmed")) {
-                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="reassign" data-id="${a.id}" data-doctor="${a.doctorId}">Reassign</button>`);
-                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${a.id}">Cancel</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="reassign" data-id="${esc(a.id)}" data-doctor="${esc(a.doctorId)}">Reassign</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${esc(a.id)}">Cancel</button>`);
               }
               if (canCancelOwn && a.patientId === session.patientId && (a.status === "requested" || a.status === "confirmed")) {
-                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${a.id}">Cancel</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${esc(a.id)}">Cancel</button>`);
               }
               const actionCell = showActions
                 ? `<td class="row-actions">${actions.join("") || "—"}</td>`
                 : "";
-              return `<tr><td>${a.date}</td><td>${a.time}</td><td>${Auth.patientName(a.patientId)}</td><td>${Auth.staffName(a.doctorId)}</td><td>${reasonCell(a.reason, a.dept)}</td><td>${badge(a.status)}</td>${actionCell}</tr>`;
+              return `<tr><td>${esc(a.date)}</td><td>${esc(a.time)}</td><td>${esc(Auth.patientName(a.patientId))}</td><td>${esc(Auth.staffName(a.doctorId))}</td><td>${reasonCell(a.reason, a.dept)}</td><td>${badge(a.status)}</td>${actionCell}</tr>`;
             }));
           if (isAdminOps) {
             const dupCount = dupGroups.reduce((n, g) => n + g.length - 1, 0);
@@ -519,13 +553,13 @@
               <div class="actions">
                 <button class="btn" type="button" id="cleanupDupes"${dupCount ? "" : " disabled"}>Clean up duplicates</button>
               </div>
-              <select id="reassignDoctorPool" hidden>${doctorOptions.map((d) => `<option value="${d.id}" data-dept="${d.dept || ""}">${d.name} · ${d.dept || "Clinic"}</option>`).join("")}</select>
+              <select id="reassignDoctorPool" hidden>${doctorOptions.map((d) => `<option value="${esc(d.id)}" data-dept="${esc(d.dept || "")}">${esc(d.name)} · ${esc(d.dept || "Clinic")}</option>`).join("")}</select>
             </div>` + html;
           }
           if (session.role === "patient") {
             const doctors = Auth.rls.doctorsPublic();
             const doctorOpts = doctors.map((d) =>
-              `<option value="${d.id}" data-dept="${d.specialty || ""}">${d.name} · ${d.specialty || "Clinic"}</option>`).join("");
+              `<option value="${esc(d.id)}" data-dept="${esc(d.specialty || "")}">${esc(d.name)} · ${esc(d.specialty || "Clinic")}</option>`).join("");
             html = `<div class="panel" style="margin-bottom:1rem" id="visitPanel">
               <div class="panel-h"><h3>Request a visit</h3><span>API · appointments:request</span></div>
               <p class="help-copy">Choose a doctor, preferred date and time, and a short reason (for example “BP check” or “Chest discomfort”). Your name is filled from your login. After you submit, the visit appears as <strong>requested</strong> until staff confirm it.</p>
@@ -534,7 +568,7 @@
                 <div class="form-grid">
                   <div class="field">
                     <label for="visitPatient">Patient</label>
-                    <input id="visitPatient" name="patient" type="text" readonly value="${session.name}" />
+                    <input id="visitPatient" name="patient" type="text" readonly value="${esc(session.name)}" />
                   </div>
                   <div class="field">
                     <label for="visitDoctor">Doctor / department</label>
@@ -570,7 +604,7 @@
         if (current === "patients" || current === "ward") {
           html = table(["Patient", "Age", "Condition", "Doctor", "Location"],
             Auth.rls.patients(session).filter((p) => matchQuery([p.name, p.condition, p.ward || "", p.bed || ""])).map((p) =>
-              `<tr><td><strong>${p.name}</strong></td><td>${p.age}${p.sex ? " · " + p.sex : ""}</td><td>${p.condition}</td><td>${Auth.staffName(p.doctorId)}</td><td>${p.ward ? p.ward + (p.bed ? " / " + p.bed : "") : "Outpatient"}</td></tr>`));
+              `<tr><td><strong>${esc(p.name)}</strong></td><td>${esc(p.age)}${p.sex ? " · " + esc(p.sex) : ""}</td><td>${esc(p.condition)}</td><td>${esc(Auth.staffName(p.doctorId))}</td><td>${p.ward ? esc(p.ward) + (p.bed ? " / " + esc(p.bed) : "") : "Outpatient"}</td></tr>`));
         }
 
         if (current === "exchanges") {
@@ -579,10 +613,10 @@
             Auth.rls.exchanges(session).filter((e) => matchQuery([e.date, e.reason || "", Auth.staffName(e.fromStaffId), Auth.staffName(e.toStaffId)])).map((e) => {
               const actions = [];
               if (canPeerRespond && e.toStaffId === session.staffId && e.status === "pending_peer") {
-                actions.push(`<button class="btn tiny" type="button" data-ex-action="peer_accepted" data-id="${e.id}">Accept</button>`);
-                actions.push(`<button class="btn soft tiny" type="button" data-ex-action="denied" data-id="${e.id}">Decline</button>`);
+                actions.push(`<button class="btn tiny" type="button" data-ex-action="peer_accepted" data-id="${esc(e.id)}">Accept</button>`);
+                actions.push(`<button class="btn soft tiny" type="button" data-ex-action="denied" data-id="${esc(e.id)}">Decline</button>`);
               }
-              return `<tr><td>${e.date}</td><td>${Auth.staffName(e.fromStaffId)}</td><td>${Auth.staffName(e.toStaffId)}</td><td>${e.reason || "—"}</td><td>${badge(e.status)}</td><td class="row-actions">${actions.join("") || "—"}</td></tr>`;
+              return `<tr><td>${esc(e.date)}</td><td>${esc(Auth.staffName(e.fromStaffId))}</td><td>${esc(Auth.staffName(e.toStaffId))}</td><td>${esc(e.reason || "—")}</td><td>${badge(e.status)}</td><td class="row-actions">${actions.join("") || "—"}</td></tr>`;
             }));
           if (Auth.can(session, "exchanges:approve")) {
             html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Admin approvals</h3><span>API · exchanges:approve</span></div>
@@ -595,9 +629,9 @@
               s.role === session.role &&
               (!myDept || s.dept === myDept) &&
               s.status === "active");
-            const peerOpts = peers.map((p) => `<option value="${p.id}">${p.name} · ${p.dept || "Unit"}</option>`).join("");
+            const peerOpts = peers.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.dept || "Unit")}</option>`).join("");
             html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Request a swap</h3><span>API · exchanges:request</span></div>
-              <p class="help-copy">Request a swap with another ${session.role} in ${myDept || "your department"}. They accept or decline; admin gives the final approval.</p>
+              <p class="help-copy">Request a swap with another ${esc(session.role)} in ${esc(myDept || "your department")}. They accept or decline; admin gives the final approval.</p>
               <div class="actions" style="align-items:center">
                 <select id="swapPeer" style="border:1px solid var(--line);border-radius:999px;padding:.65rem .9rem;background:var(--panel);color:var(--navy);font-weight:700">
                   <option value="">Select colleague</option>
@@ -620,8 +654,8 @@
 
         if (current === "doctors" && Auth.can(session, "doctors:read_public")) {
           html = `<div class="cards">${Auth.rls.doctorsPublic().filter((d) => matchQuery([d.name, d.specialty])).map((d) =>
-            `<article class="card"><h4>${d.name}</h4><p>${d.specialty}</p><div class="meta">${d.onDuty ? "On duty · " : ""}${d.nextSlot} · ★ ${d.rating}</div>
-              <div class="actions" style="padding:.8rem 0 0"><button class="btn soft" type="button" data-go="availability" data-specialty="${d.specialty}">View schedule</button></div></article>`).join("")}</div>`;
+            `<article class="card"><h4>${esc(d.name)}</h4><p>${esc(d.specialty)}</p><div class="meta">${d.onDuty ? "On duty · " : ""}${esc(d.nextSlot)} · ★ ${esc(d.rating)}</div>
+              <div class="actions" style="padding:.8rem 0 0"><button class="btn soft" type="button" data-go="availability" data-specialty="${esc(d.specialty)}">View schedule</button></div></article>`).join("")}</div>`;
         }
 
         if (current === "availability" && Auth.can(session, "schedule:read_public")) {
@@ -631,7 +665,7 @@
           if (activeSpec !== "All") rows = rows.filter((r) => r.specialty === activeSpec);
           rows = rows.filter((r) => matchQuery([r.specialty, r.day, r.room, Auth.staffName(r.doctorId), r.slots.join(" ")]));
           const chips = ["All", ...specialties].map((s) =>
-            `<button class="btn ${s === activeSpec ? "" : "soft"}" type="button" data-spec="${s}">${s}</button>`).join("");
+            `<button class="btn ${s === activeSpec ? "" : "soft"}" type="button" data-spec="${esc(s)}">${esc(s)}</button>`).join("");
           html = `
             <div class="panel" style="margin-bottom:1rem">
               <div class="panel-h"><h3>Filter by specialty</h3><span>${specialties.length} specialties · all doctors visible to patients</span></div>
@@ -640,11 +674,11 @@
             ${table(["Specialty", "Doctor", "Day / date", "Room", "Open slots", "Status"],
               rows.map((r) =>
                 `<tr>
-                  <td><strong>${r.specialty}</strong></td>
-                  <td>${Auth.staffName(r.doctorId)}</td>
-                  <td>${r.day}<br><span style="color:var(--muted);font-size:.78rem">${r.date}</span></td>
-                  <td>${r.room}</td>
-                  <td>${r.slots.map((t) => `<span class="badge" style="margin:0 .2rem .2rem 0">${t}</span>`).join("")}</td>
+                  <td><strong>${esc(r.specialty)}</strong></td>
+                  <td>${esc(Auth.staffName(r.doctorId))}</td>
+                  <td>${esc(r.day)}<br><span style="color:var(--muted);font-size:.78rem">${esc(r.date)}</span></td>
+                  <td>${esc(r.room)}</td>
+                  <td>${r.slots.map((t) => `<span class="badge" style="margin:0 .2rem .2rem 0">${esc(t)}</span>`).join("")}</td>
                   <td>${badge(r.status === "open" ? "open" : r.status === "limited" ? "limited" : "full")}</td>
                 </tr>`))}
             <p style="margin:.85rem 0 0;color:var(--muted);font-size:.8rem;font-weight:600">Live clinic timetable from Filfilu API · /api/doctor-schedules</p>`;
@@ -652,22 +686,22 @@
 
         if (current === "notifications") {
           const rows = Auth.rls.notifications(session).filter((n) => matchQuery([n.text]));
-          html = `<div class="panel"><div class="panel-h"><h3>${session.meta.short} inbox</h3><span>${rows.length} alerts</span></div>
+          html = `<div class="panel"><div class="panel-h"><h3>${esc(session.meta.short)} inbox</h3><span>${rows.length} alerts</span></div>
             <div class="list">${rows.map((n) => `<div class="list-item"><span class="dot ${n.level === "warn" ? "warn" : n.level === "ok" ? "ok" : ""}"></span>
-              <div><strong>${n.text}</strong><p>Visible only to ${session.role}</p></div><time>${n.time}</time></div>`).join("") || '<div class="empty">Inbox clear</div>'}</div></div>`;
+              <div><strong>${esc(n.text)}</strong><p>Visible only to ${esc(session.role)}</p></div><time>${esc(n.time)}</time></div>`).join("") || '<div class="empty">Inbox clear</div>'}</div></div>`;
         }
 
         if (current === "profile" && session.role === "patient") {
           const me = Auth.rls.patients(session)[0];
           html = me ? `<div class="panel"><div class="profile-grid">
-            <div class="profile-side"><div class="avatar">${Auth.initials(me.name)}</div><strong>${me.name}</strong><p style="color:var(--muted);font-size:.8rem;font-weight:700;margin:.35rem 0 0">Patient ID ${me.id}</p></div>
+            <div class="profile-side"><div class="avatar">${esc(Auth.initials(me.name))}</div><strong>${esc(me.name)}</strong><p style="color:var(--muted);font-size:.8rem;font-weight:700;margin:.35rem 0 0">Patient ID ${esc(me.id)}</p></div>
             <div>
-              <div class="kv"><span>Age / sex</span><strong>${me.age} · ${me.sex}</strong></div>
-              <div class="kv"><span>Blood type</span><strong>${me.blood}</strong></div>
-              <div class="kv"><span>Primary doctor</span><strong>${Auth.staffName(me.doctorId)}</strong></div>
-              <div class="kv"><span>Condition</span><strong>${me.condition}</strong></div>
-              <div class="kv"><span>Phone</span><strong>${me.phone}</strong></div>
-              <div class="kv"><span>Assigned role</span><strong>${session.meta.label}</strong></div>
+              <div class="kv"><span>Age / sex</span><strong>${esc(me.age)} · ${esc(me.sex)}</strong></div>
+              <div class="kv"><span>Blood type</span><strong>${esc(me.blood)}</strong></div>
+              <div class="kv"><span>Primary doctor</span><strong>${esc(Auth.staffName(me.doctorId))}</strong></div>
+              <div class="kv"><span>Condition</span><strong>${esc(me.condition)}</strong></div>
+              <div class="kv"><span>Phone</span><strong>${esc(me.phone)}</strong></div>
+              <div class="kv"><span>Assigned role</span><strong>${esc(session.meta.label)}</strong></div>
             </div>
           </div></div>` : `<div class="panel"><div class="empty">No profile linked.</div></div>`;
         }
@@ -705,7 +739,7 @@
               ? match.slots
               : ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00"];
             const prev = timeEl.value;
-            timeEl.innerHTML = `<option value="">Select a time</option>${slots.map((t) => `<option value="${t}">${t}</option>`).join("")}`;
+            timeEl.innerHTML = `<option value="">Select a time</option>${slots.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("")}`;
             if (slots.includes(prev)) timeEl.value = prev;
           };
 
@@ -832,6 +866,61 @@
             }
           });
         });
+        const createStaffForm = document.getElementById("createStaffForm");
+        if (createStaffForm) {
+          const roleEl = document.getElementById("createStaffRole");
+          const wardEl = document.getElementById("createStaffWard");
+          const syncWardRequired = () => {
+            if (!wardEl || !roleEl) return;
+            const needsWard = roleEl.value === "nurse";
+            wardEl.required = needsWard;
+            wardEl.placeholder = needsWard ? "Required — e.g. Ward A" : "Not used for doctors";
+          };
+          roleEl?.addEventListener("change", syncWardRequired);
+          syncWardRequired();
+          createStaffForm.addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            const fd = new FormData(createStaffForm);
+            const role = String(fd.get("role") || "");
+            const ward = String(fd.get("ward") || "").trim();
+            if (role === "nurse" && !ward) {
+              showToast("Ward is required for nurses.");
+              wardEl?.focus();
+              return;
+            }
+            const payload = {
+              first: String(fd.get("first") || "").trim(),
+              last: String(fd.get("last") || "").trim(),
+              email: String(fd.get("email") || "").trim(),
+              password: String(fd.get("password") || ""),
+              role,
+              dept: String(fd.get("dept") || "").trim() || undefined,
+              ward: role === "nurse" ? ward : undefined,
+              phone: String(fd.get("phone") || "").trim() || undefined,
+            };
+            const msgEl = document.getElementById("createStaffMsg");
+            const submitBtn = createStaffForm.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            try {
+              await Auth.createStaffAccount(payload);
+              showToast(`${payload.role === "nurse" ? "Nurse" : "Doctor"} account created for ${payload.email}`);
+              createStaffForm.reset();
+              syncWardRequired();
+              if (msgEl) {
+                msgEl.hidden = false;
+                msgEl.textContent = "Account created. They can sign in with that email and password.";
+              }
+              render();
+            } catch (err) {
+              if (msgEl) {
+                msgEl.hidden = false;
+                msgEl.textContent = err.message || "Could not create staff account.";
+              }
+              showToast(err.message || "Could not create staff account.");
+              submitBtn.disabled = false;
+            }
+          });
+        }
         const cleanup = document.getElementById("cleanupDupes");
         if (cleanup) {
           cleanup.addEventListener("click", async () => {
