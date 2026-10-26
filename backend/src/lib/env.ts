@@ -11,6 +11,7 @@ const WEAK_SECRETS = new Set([
   "jwt-secret",
   "replace-with-a-long-random-secret",
   "replace-with-a-long-random-secret-at-least-32-chars",
+  "CHANGE_ME",
 ]);
 
 const DEV_CORS_DEFAULT = "http://127.0.0.1:8080,http://localhost:8080";

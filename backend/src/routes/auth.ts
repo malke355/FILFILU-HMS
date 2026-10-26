@@ -328,7 +328,8 @@ const resetSchema = z.object({
 
 /**
  * Request a password reset. Always returns the same message (no email enumeration).
- * Sends email via Nodemailer when SMTP is configured; in development also returns `devResetUrl`.
+ * Sends email via Nodemailer when SMTP is configured.
+ * Reset URLs are never returned in JSON unless ALLOW_DEV_RESET_URL=1 (non-production only).
  */
 router.post("/forgot-password", forgotPasswordLimiter, async (req, res, next) => {
   try {

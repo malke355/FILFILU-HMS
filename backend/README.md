@@ -10,7 +10,8 @@ cp .env.example .env   # if needed
 npm install
 npm run db:generate
 npm run db:deploy
-npm run db:seed
+# Destructive demo seed (local only; requires confirmation):
+$env:CONFIRM_SEED="YES"; npm run db:seed
 npm run dev
 ```
 
@@ -18,7 +19,7 @@ Schema: use `npm run db:migrate` while developing, `npm run db:deploy` in CI/pro
 
 App: **http://127.0.0.1:8080/login.html** (UI and `/api` on the same port)
 
-Demo password for all seeded users: `filfilu`
+After local seed, demo password is `filfilu` (blocked in production unless `ALLOW_DESTRUCTIVE_SEED=1`).
 
 | Email | Role |
 |-------|------|

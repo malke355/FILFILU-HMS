@@ -277,18 +277,35 @@ router.post("/appointments", async (req: AuthedRequest, res, next) => {
     if (!patientId) return res.status(400).json({ error: "patientId required." });
 
     await assertActiveDoctor(body.doctorId);
-    const time = await assertSlotAvailable(body.doctorId, body.date, body.time);
-
-    const row = await prisma.appointment.create({
-      data: {
-        patientId,
-        doctorId: body.doctorId,
-        date: body.date,
-        time,
-        dept: body.dept,
-        reason: body.reason,
-        status: u.role === "patient" ? "requested" : "confirmed",
-      },
+    // Slot check + create in one transaction; DB partial unique index also blocks races (P2002 → 409).
+    const row = await prisma.$transaction(async (tx) => {
+      const time = await assertSlotAvailable(body.doctorId, body.date, body.time);
+      // Re-check inside the transaction against the same connection snapshot.
+      const conflict = await tx.appointment.findFirst({
+        where: {
+          doctorId: body.doctorId,
+          date: body.date,
+          time,
+          status: { in: ["requested", "confirmed"] },
+        },
+        select: { id: true },
+      });
+      if (conflict) {
+        throw Object.assign(new Error("That doctor is already booked at this date and time."), {
+          status: 409,
+        });
+      }
+      return tx.appointment.create({
+        data: {
+          patientId,
+          doctorId: body.doctorId,
+          date: body.date,
+          time,
+          dept: body.dept,
+          reason: body.reason,
+          status: u.role === "patient" ? "requested" : "confirmed",
+        },
+      });
     });
     await writeAudit({ actorId: u.sub, action: "appointment.create", entity: row.id });
     res.status(201).json({ data: row });

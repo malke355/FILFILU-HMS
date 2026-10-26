@@ -42,6 +42,11 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return res.status(status).json({ error: err.message || "Request failed." });
   }
 
+  // Prisma unique constraint (e.g. concurrent double-booking).
+  if (err && typeof err === "object" && (err as { code?: string }).code === "P2002") {
+    return res.status(409).json({ error: "That slot is already booked." });
+  }
+
   logError("http", err);
   if (isDatabaseUnreachable(err)) {
     return res.status(503).json({

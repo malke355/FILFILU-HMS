@@ -25,29 +25,56 @@ if (Test-Path $envFile) {
   }
 }
 
-$PgHost = if ($env:PGHOST) { $env:PGHOST } else { "127.0.0.1" }
-$PgPort = if ($env:PGPORT) { $env:PGPORT } else { "5434" }
 $Db = if ($env:PGDATABASE) { $env:PGDATABASE } else { "hms" }
 $Super = if ($env:POSTGRES_SUPERUSER) { $env:POSTGRES_SUPERUSER } else { "postgres" }
 $Stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$File = Join-Path $OutDir "hms-$Stamp.sql.gz"
+$SqlFile = Join-Path $OutDir "hms-$Stamp.sql"
+$GzFile = Join-Path $OutDir "hms-$Stamp.sql.gz"
 
-Write-Host "Backing up $Db @ ${PgHost}:${PgPort} → $File"
+Write-Host "Backing up $Db → $GzFile"
 
 $running = docker ps --format "{{.Names}}" 2>$null | Select-String -Pattern "^filfilu-hms-pg$"
-if ($running) {
-  $dump = docker exec -e "PGPASSWORD=$($env:POSTGRES_PASSWORD)" filfilu-hms-pg `
-    pg_dump -U $Super -d $Db --no-owner --format=plain
-  $bytes = [System.Text.Encoding]::UTF8.GetBytes(($dump -join "`n") + "`n")
-  $ms = New-Object System.IO.MemoryStream
-  $gz = New-Object System.IO.Compression.GzipStream($ms, [System.IO.Compression.CompressionMode]::Compress)
-  $gz.Write($bytes, 0, $bytes.Length)
-  $gz.Close()
-  [System.IO.File]::WriteAllBytes($File, $ms.ToArray())
-} else {
-  throw "Container filfilu-hms-pg is not running. Start it with docker compose -f docker-compose.hms.yml --env-file .env up -d"
+if (-not $running) {
+  throw "Container filfilu-hms-pg is not running. Start it with: docker compose -f docker-compose.hms.yml --env-file .env up -d"
 }
 
+# Stream dump to a UTF-8 file (avoids PowerShell string/encoding corruption).
+$dockerArgs = @("exec")
+if ($env:POSTGRES_PASSWORD) {
+  $dockerArgs += @("-e", "PGPASSWORD=$($env:POSTGRES_PASSWORD)")
+}
+$dockerArgs += @(
+  "filfilu-hms-pg",
+  "pg_dump",
+  "-U", $Super,
+  "-d", $Db,
+  "--no-owner",
+  "--format=plain"
+)
+
+& docker @dockerArgs | Set-Content -Path $SqlFile -Encoding utf8
+if ($LASTEXITCODE -ne 0) {
+  Remove-Item -Force $SqlFile -ErrorAction SilentlyContinue
+  throw "pg_dump failed with exit code $LASTEXITCODE"
+}
+
+$len = (Get-Item $SqlFile).Length
+if ($len -lt 64) {
+  Remove-Item -Force $SqlFile -ErrorAction SilentlyContinue
+  throw "Backup failed: dump is empty or too small ($len bytes)."
+}
+
+$inBytes = [System.IO.File]::ReadAllBytes($SqlFile)
+$outStream = [System.IO.File]::Create($GzFile)
+$gz = New-Object System.IO.Compression.GzipStream($outStream, [System.IO.Compression.CompressionMode]::Compress)
+try {
+  $gz.Write($inBytes, 0, $inBytes.Length)
+} finally {
+  $gz.Dispose()
+  $outStream.Dispose()
+}
+Remove-Item -Force $SqlFile
+
 Get-ChildItem "$OutDir\hms-*.sql.gz" | Sort-Object LastWriteTime -Descending | Select-Object -Skip 14 | Remove-Item -Force
-Write-Host "Done: $File"
-Get-Item $File | Format-List FullName, Length, LastWriteTime
+Write-Host "Done: $GzFile ($len bytes uncompressed)"
+Get-Item $GzFile | Format-List FullName, Length, LastWriteTime
