@@ -1,6 +1,6 @@
 # Filfilu HMS — Phase 2 Backend
 
-Express + TypeScript + Prisma + SQLite API with JWT auth and server-side RBAC/RLS.
+NestJS + TypeScript + Prisma + SQLite API with JWT auth and server-side RBAC/RLS. The landing pages are served by the same process.
 
 ## Quick start
 
@@ -73,8 +73,8 @@ The API serves the landing pages. One process is the whole product:
 
 | Command | Purpose |
 |---------|---------|
-| `npm run dev` | tsx watch on `:8080` (UI + API) |
-| `npm run build` / `start` | Compile + run `dist` |
+| `npm run dev` | NestJS watch on `:8080` (UI + API) |
+| `npm run build` / `start` | Compile `nest/` and run it |
 | `npm run db:push` | Sync Prisma schema to SQLite |
 | `npm run db:seed` | Load demo data |
 | `npm run db:reset` | Wipe DB + reseed |

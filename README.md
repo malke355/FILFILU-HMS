@@ -3,7 +3,7 @@
 Demonstration **Hospital Duty Schedule Management System**.
 
 - **Phase 1** — React + Vite frontend (`src/`) and premium landing (`landing/`)
-- **Phase 2** — Express + Prisma + SQLite API with JWT auth and RBAC/RLS (`backend/`)
+- **Phase 2** — NestJS + Prisma + SQLite API with JWT auth and RBAC/RLS (`backend/`)
 
 ## Live demo
 
