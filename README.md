@@ -1,8 +1,8 @@
 # Filfilu HMS
 
-Hospital Duty Schedule Management System — **Express API + landing UI** on one port.
+Hospital Duty Schedule Management System — **NestJS process + landing UI** on one port.
 
-The product is the Express app in `backend/` (serves `landing/` and `/api`).  
+The product is the app in `backend/` (serves `landing/` and `/api`). NestJS listens; the existing route handlers keep PostgreSQL, cookie sessions, Google sign-in, and password reset.  
 GitHub Pages is an optional **static brochure** only — login/booking need the API host.
 
 ## Quick start

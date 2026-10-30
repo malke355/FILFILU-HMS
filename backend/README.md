@@ -1,6 +1,6 @@
 # Filfilu HMS — Backend
 
-Express + TypeScript + Prisma + PostgreSQL API with JWT auth and server-side RBAC/RLS.
+NestJS + TypeScript + Prisma + PostgreSQL API with cookie sessions and server-side RBAC/RLS. NestJS is the process that listens. The route handlers keep the current API behavior.
 
 ## Quick start
 
