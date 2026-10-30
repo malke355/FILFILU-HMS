@@ -27,3 +27,7 @@ export function permissionsFor(role: string): string[] {
   }
   return [];
 }
+
+export function can(role: string, permission: string): boolean {
+  return permissionsFor(role).includes(permission);
+}
