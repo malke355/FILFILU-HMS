@@ -29,7 +29,9 @@ export class ApiExceptionFilter implements ExceptionFilter {
 }
 
 function isApiError(body: unknown): body is { error: string } {
-  return typeof body === 'object' && body !== null && typeof (body as { error?: unknown }).error === 'string';
+  if (typeof body !== 'object' || body === null) return false;
+  const record = body as { error?: unknown; statusCode?: unknown };
+  return typeof record.error === 'string' && record.statusCode === undefined;
 }
 
 function unauthorizedMessage(body: unknown): string {

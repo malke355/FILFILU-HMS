@@ -21,7 +21,7 @@ describe('CareModule', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication({ bodyParser: false });
     configureApp(app);
     await app.init();
     await app.listen(0, '127.0.0.1');

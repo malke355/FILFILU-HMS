@@ -1,6 +1,7 @@
 import path from 'path';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AppInfoController } from './app-info.controller';
 import { AuthModule } from './auth/auth.module';
 import { CareModule } from './care/care.module';
 import { DirectoryModule } from './directory/directory.module';
@@ -23,5 +24,6 @@ import { WorkforceModule } from './workforce/workforce.module';
     CareModule,
     InsightsModule,
   ],
+  controllers: [AppInfoController],
 })
 export class AppModule {}

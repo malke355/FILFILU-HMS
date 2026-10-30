@@ -9,7 +9,7 @@ import { configureApp } from './configure-app';
 loadEnv({ path: path.resolve(__dirname, '../../.env') });
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
   configureApp(app);
   const config = app.get(ConfigService);
   const port = Number(config.get<string>('NEST_PORT') ?? 8081);
