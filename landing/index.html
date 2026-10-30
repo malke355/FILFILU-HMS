@@ -371,10 +371,9 @@
           <div class="photo-ph" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5z"/></svg>
           </div>
-          <img src="doctor.jpg" alt="Filfilu Hospital doctor" onerror="this.remove()" />
+          <img src="doctor.jpg?v=3" alt="Filfilu Hospital doctor" onerror="this.remove()" />
           <span class="glass-badge">FILFILU HOSPITAL</span>
 
-          <!-- SAMPLE DATA: replace BPM / slot / online count from backend -->
           <div class="float-card card-hr">
             <small>Live heart rate</small>
             <strong><span id="bpm">72</span> <span style="font-size:.85rem;font-weight:600;color:var(--muted)">BPM</span></strong>
@@ -384,10 +383,10 @@
             <span class="slot-ico" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
             </span>
-            <div><small>Next available</small><strong style="font-size:.95rem">Today, 3:30 PM</strong></div>
+            <div><small data-i18n="home.nextAvailable">Next available</small><strong id="nextSlot" style="font-size:.95rem">—</strong></div>
           </div>
           <div class="float-card card-docs">
-            <small>Doctors online</small>
+            <small data-i18n="home.doctorsOnline">Doctors online</small>
             <div class="avatars" aria-hidden="true"><span></span><span></span><span></span></div>
             <strong><span id="docsOnline">0</span></strong>
           </div>
@@ -395,7 +394,6 @@
       </div>
     </section>
 
-    <!-- SAMPLE / MOCK DATA: replace About, Services, Departments, Contact from backend later -->
     <section class="section" id="about" aria-labelledby="about-title">
       <div class="wrap">
         <div class="section-head">
@@ -437,7 +435,7 @@
         <div class="section-head">
           <span class="section-kicker" data-i18n="home.servicesKicker">Services</span>
           <h2 id="services-title" data-i18n="home.servicesTitle">What we offer</h2>
-          <p>Mock catalogue of clinical and support services — swap these for live offerings from your system.</p>
+          <p data-i18n="home.servicesBody">From first visits to specialty follow-ups, Filfilu keeps care coordinated.</p>
         </div>
         <div class="cards-3">
           <article class="info-card">
@@ -484,10 +482,10 @@
       <div class="wrap">
         <div class="section-head">
           <span class="section-kicker" data-i18n="home.deptKicker">Departments</span>
-          <h2 id="departments-title">Clinical departments</h2>
-          <p>Sample department directory with hours and lead clinicians — replace with live roster data.</p>
+          <h2 id="departments-title" data-i18n="home.deptTitle">Clinical departments</h2>
+          <p data-i18n="home.deptBody">Browse the units that power everyday care at Filfilu.</p>
         </div>
-        <div class="cards-4">
+        <div class="cards-4" id="deptGrid">
           <article class="info-card dept-card">
             <div class="info-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><path d="M18 14v2a4 4 0 0 1-8 0"/><circle cx="18" cy="19" r="2"/></svg></div>
             <h3>General Medicine</h3>
@@ -553,7 +551,7 @@
         <div class="section-head">
           <span class="section-kicker" data-i18n="home.contactKicker">Contact</span>
           <h2 id="contact-title" data-i18n="home.contactTitle">Talk to Filfilu</h2>
-          <p>Mock contact details and a message form — wire submit to your backend when ready.</p>
+          <p data-i18n="home.contactBody">Send a message — we route inquiries to the right hospital desk.</p>
         </div>
         <div class="contact-grid">
           <div class="contact-list">
@@ -623,7 +621,7 @@
       <form id="bookForm">
         <label class="field">Full name<input name="name" required autocomplete="name" /></label>
         <label class="field">Department
-          <select name="department" required>
+          <select id="bookDepartment" name="department" required>
             <option value="">Select department</option>
             <option>General Medicine</option>
             <option>Pediatrics</option>
@@ -643,7 +641,7 @@
   </dialog>
 
   <script src="js/config.js?v=1"></script>
-  <script src="js/i18n.js"></script>
+  <script src="js/i18n.js?v=3"></script>
   <script>
     (() => {
       const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -715,20 +713,23 @@
         panel.style.setProperty("--my", "0");
       });
 
-      /* Doctors online count-up — SAMPLE: target 24 */
-      const ONLINE_TARGET = 24;
       const docsEl = document.getElementById("docsOnline");
-      if (!reduce) {
+      function showOnlineCount(total) {
+        const target = Math.max(0, Number(total) || 0);
+        if (reduce) {
+          docsEl.textContent = String(target);
+          return;
+        }
         const start = performance.now();
         const tick = (t) => {
-          const p = Math.min(1, (t - start) / 1600);
-          docsEl.textContent = Math.round(ONLINE_TARGET * (1 - Math.pow(1 - p, 3)));
+          const p = Math.min(1, (t - start) / 900);
+          docsEl.textContent = String(Math.round(target * (1 - Math.pow(1 - p, 3))));
           if (p < 1) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
-      } else docsEl.textContent = ONLINE_TARGET;
+      }
 
-      /* Live ECG + BPM — SAMPLE: BPM 70–76 */
+      /* Decorative ECG motif for the hero. Clinic slots come from the API. */
       const bpmEl = document.getElementById("bpm");
       const ecg = document.getElementById("ecg");
       const ectx = ecg.getContext("2d");
@@ -859,6 +860,87 @@
       document.getElementById("closeDialog").addEventListener("click", () => dialog.close());
       dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); });
       const API = (window.FILFILU_API_BASE || (/\.github\.io$/i.test(location.hostname) ? "" : `${location.origin}/api`)).replace(/\/$/, "");
+      function slotRank(slot) {
+        const text = String(slot || "");
+        const day = /^today/i.test(text) ? 0 : /^tomorrow/i.test(text) ? 1 : 2;
+        const match = text.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        let minutes = 24 * 60;
+        if (match) {
+          let hour = Number(match[1]) % 12;
+          if (/pm/i.test(match[3])) hour += 12;
+          minutes = hour * 60 + Number(match[2]);
+        }
+        return day * 10000 + minutes;
+      }
+      function soonestSlot(doctors) {
+        const withSlot = doctors.filter((d) => d && d.nextSlot);
+        const pool = withSlot.filter((d) => d.onDuty);
+        const list = pool.length ? pool : withSlot;
+        if (!list.length) return "";
+        return list.slice().sort((a, b) => slotRank(a.nextSlot) - slotRank(b.nextSlot))[0].nextSlot;
+      }
+      function paintDepartments(names) {
+        const grid = document.getElementById("deptGrid");
+        if (!grid || !names.length) return;
+        const existing = [...grid.querySelectorAll(".dept-card")];
+        const byName = new Map(existing.map((card) => [card.querySelector("h3")?.textContent?.trim(), card]));
+        const frag = document.createDocumentFragment();
+        for (const name of names) {
+          const card = byName.get(name);
+          if (card) {
+            frag.appendChild(card);
+            byName.delete(name);
+            continue;
+          }
+          const article = document.createElement("article");
+          article.className = "info-card dept-card";
+          const title = document.createElement("h3");
+          title.textContent = name;
+          const body = document.createElement("p");
+          body.textContent = "Clinical department at Filfilu Hospital.";
+          article.append(title, body);
+          frag.appendChild(article);
+        }
+        grid.replaceChildren(frag);
+      }
+      function paintBookDepartments(names) {
+        const select = document.getElementById("bookDepartment");
+        if (!select || !names.length) return;
+        const current = select.value;
+        select.replaceChildren();
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Select department";
+        select.appendChild(placeholder);
+        for (const name of names) {
+          const option = document.createElement("option");
+          option.value = name;
+          option.textContent = name;
+          select.appendChild(option);
+        }
+        if (names.includes(current)) select.value = current;
+      }
+      async function loadPublicRoster() {
+        if (!API) return;
+        try {
+          const [deptRes, docRes] = await Promise.all([
+            fetch(`${API}/departments`),
+            fetch(`${API}/doctors?limit=200`),
+          ]);
+          const departments = deptRes.ok ? await deptRes.json() : { data: [] };
+          const doctors = docRes.ok ? await docRes.json() : { data: [] };
+          const names = Array.isArray(departments.data) ? departments.data.map((d) => d.name).filter(Boolean) : [];
+          const rows = Array.isArray(doctors.data) ? doctors.data : [];
+          paintDepartments(names);
+          paintBookDepartments(names);
+          showOnlineCount(rows.filter((d) => d.onDuty).length);
+          const next = soonestSlot(rows);
+          if (next) document.getElementById("nextSlot").textContent = next;
+        } catch {
+          showOnlineCount(0);
+        }
+      }
+      loadPublicRoster();
       async function postApi(path, payload) {
         const res = await fetch(`${API}${path}`, {
           method: "POST",
