@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { createApp } from "./app.js";
+import { listenWithNest } from "./nest-host.js";
 import { applyDataRetention } from "./lib/audit.js";
 import { assertEnvConfigured, isProduction } from "./lib/env.js";
 import { assertGoogleProductionConfig } from "./lib/google.js";
@@ -42,11 +43,10 @@ async function main() {
   }
 
   const app = createApp();
-  app.listen(port, "0.0.0.0", () => {
-    logInfo(`Filfilu app http://127.0.0.1:${port}/login.html`);
-    logInfo(`Filfilu API http://127.0.0.1:${port}/api/health`);
-    logInfo(smtpConfigured() ? "SMTP mail: configured" : "SMTP mail: not configured (dev reset links only)");
-  });
+  await listenWithNest(app, port);
+  logInfo(`Filfilu app http://127.0.0.1:${port}/login.html`);
+  logInfo(`Filfilu API http://127.0.0.1:${port}/api/health`);
+  logInfo(smtpConfigured() ? "SMTP mail: configured" : "SMTP mail: not configured (dev reset links only)");
 }
 
 main();
