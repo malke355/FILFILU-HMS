@@ -9,13 +9,8 @@ GitHub Pages is an optional **static brochure** only — login/booking need the 
 
 PostgreSQL is configured only via `backend/.env` (never commit `.env`).
 
-| Setting | Value |
-|---------|--------|
-| Host | `127.0.0.1` (loopback only) |
-| Port | `5434` |
-| Database | `hms` |
-| App user | `filfilu` (not the postgres superuser) |
-| Passwords | see `backend/.env` |
+**Current setup:** use a **Neon** `DATABASE_URL` in `backend/.env` (see Neon dashboard → Connection string).  
+Local Docker Postgres on `5434` remains optional for offline work — see `backend/.env.example`.
 
 ### 1. Start the database
 
