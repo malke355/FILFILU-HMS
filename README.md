@@ -57,6 +57,24 @@ backend/   Express + Prisma API (serves the UI)
 landing/   Login, signup, and app pages
 ```
 
+## Full product deploy (backend + database)
+
+Recommended: **Render Blueprint** (creates Postgres + Docker web service).
+
+1. Push `main` to GitHub (already includes `render.yaml`).
+2. Open [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → select `malke355/FILFILU-HMS`.
+3. Apply the blueprint. Wait until the web service is live.
+4. In the web service **Environment**, set:
+   - `FRONTEND_ORIGIN` = `https://YOUR-SERVICE.onrender.com`
+   - `CORS_ORIGIN` = same value
+   - `GOOGLE_*` and `SMTP_*` if you want Google login / password reset
+5. In Google Cloud Console, add Authorized redirect URI:  
+   `https://YOUR-SERVICE.onrender.com/api/auth/google/callback`
+6. Open `https://YOUR-SERVICE.onrender.com/api/health` — expect `database: "up"`.
+7. Open `https://YOUR-SERVICE.onrender.com/login` — this is the real app (UI + API together).
+
+Do **not** run the demo seed on production.
+
 ## Static frontend deploy (Vercel / GitHub Pages)
 
 The brochure UI is in `landing/`. Root `vercel.json` builds that folder into `deploy-static/` so hosts do **not** 404 on an empty app root.
