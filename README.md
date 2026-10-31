@@ -57,10 +57,16 @@ backend/   Express + Prisma API (serves the UI)
 landing/   Login, signup, and app pages
 ```
 
-## GitHub Pages
+## Static frontend deploy (Vercel / GitHub Pages)
 
-**https://malke355.github.io/FILFILU-HMS/** may publish `landing/` as static files.  
-That host has **no** Postgres/API unless you set repository variable `FILFILU_API_BASE` to a real HTTPS API and configure `CORS_ORIGIN` on that API.
+The brochure UI is in `landing/`. Root `vercel.json` builds that folder into `deploy-static/` so hosts do **not** 404 on an empty app root.
+
+**Vercel:** Import the GitHub repo → Deploy (leave Root Directory empty / `.`).  
+Do **not** set Root Directory to `backend`. After deploy, open `/` or `/login`.
+
+**GitHub Pages:** **https://malke355.github.io/FILFILU-HMS/** (Actions workflow uploads `landing/`).
+
+Static hosts have **no** Postgres/API unless you set `FILFILU_API_BASE` to a real HTTPS API and configure `CORS_ORIGIN` on that API. Full login needs the `backend` deployed separately.
 
 ## License
 

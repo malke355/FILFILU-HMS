@@ -1,0 +1,10 @@
+backend/node_modules
+backend/prisma/*.db
+backend/prisma/*.db-journal
+node_modules
+.git
+**/.env
+**/.env.*
+!.env.example
+agent-transcripts
+.cursor

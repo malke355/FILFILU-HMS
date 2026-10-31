@@ -1,0 +1,10 @@
+{
+  "name": "filfilu-hms",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Filfilu HMS — static landing build for Vercel/Pages; full product runs from backend/",
+  "scripts": {
+    "build": "node scripts/prepare-static-deploy.mjs",
+    "build:static": "node scripts/prepare-static-deploy.mjs"
+  }
+}
