@@ -49,10 +49,12 @@ export const bookingLimiter = rateLimit({
   message: jsonTooMany("Too many booking requests. Please try again later."),
 });
 
-/** Password reset request spam protection. */
+const isDev = process.env.NODE_ENV !== "production";
+
+/** Password reset request spam protection (loose in local/dev so testing isn’t blocked). */
 export const forgotPasswordLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 5,
+  windowMs: isDev ? 60 * 1000 : 60 * 60 * 1000,
+  limit: isDev ? 100 : 5,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: jsonTooMany("Too many password reset requests. Please try again later."),
@@ -60,8 +62,8 @@ export const forgotPasswordLimiter = rateLimit({
 
 /** Password reset submit protection. */
 export const resetPasswordLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 10,
+  windowMs: isDev ? 60 * 1000 : 60 * 60 * 1000,
+  limit: isDev ? 100 : 10,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: jsonTooMany("Too many password reset attempts. Please try again later."),

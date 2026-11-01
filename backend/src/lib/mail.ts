@@ -1,14 +1,13 @@
 import nodemailer from "nodemailer";
-import { isProduction } from "./env.js";
+import { isProduction, stripEnvQuotes } from "./env.js";
 import { logError, logInfo } from "./logger.js";
 
+function smtpEnv(name: string) {
+  return stripEnvQuotes(process.env[name]);
+}
+
 export function smtpConfigured() {
-  return Boolean(
-    process.env.SMTP_HOST?.trim() &&
-      process.env.SMTP_USER?.trim() &&
-      process.env.SMTP_PASS?.trim() &&
-      process.env.SMTP_FROM?.trim(),
-  );
+  return Boolean(smtpEnv("SMTP_HOST") && smtpEnv("SMTP_USER") && smtpEnv("SMTP_PASS") && smtpEnv("SMTP_FROM"));
 }
 
 /**
@@ -26,11 +25,11 @@ export function assertSmtpProductionConfig() {
 }
 
 function createTransport() {
-  const host = process.env.SMTP_HOST!.trim();
-  const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER!.trim();
+  const host = smtpEnv("SMTP_HOST");
+  const port = Number(smtpEnv("SMTP_PORT") || 587);
+  const user = smtpEnv("SMTP_USER");
   // Gmail app passwords are often shown with spaces — strip them.
-  const pass = process.env.SMTP_PASS!.replace(/\s+/g, "");
+  const pass = smtpEnv("SMTP_PASS").replace(/\s+/g, "");
   return nodemailer.createTransport({
     host,
     port,
@@ -59,7 +58,7 @@ export async function sendMail(input: SendMailInput): Promise<boolean> {
     return false;
   }
 
-  const from = process.env.SMTP_FROM!.trim();
+  const from = smtpEnv("SMTP_FROM");
   const transport = createTransport();
   try {
     await transport.sendMail({
@@ -69,6 +68,7 @@ export async function sendMail(input: SendMailInput): Promise<boolean> {
       text: input.text,
       html: input.html,
     });
+    logInfo("mail.send.ok", { to: input.to, subject: input.subject });
     return true;
   } catch (err) {
     logError("mail.send", err);
@@ -77,14 +77,17 @@ export async function sendMail(input: SendMailInput): Promise<boolean> {
 }
 
 export async function sendPasswordResetEmail(to: string, resetUrl: string) {
-  const subject = "Reset your Filfilu HMS password";
+  const subject = "Set or reset your Filfilu HMS password";
   const text =
-    `You requested a password reset for Filfilu HMS.\n\n` +
-    `Open this link within 1 hour:\n${resetUrl}\n\n` +
+    `You requested a password for Filfilu HMS.\n\n` +
+    `Open this link within 1 hour (Set new password page — not login):\n${resetUrl}\n\n` +
+    `After you set a password you can sign in with email+password or Google.\n` +
     `If you did not request this, you can ignore this email.`;
   const html = `
-    <p>You requested a password reset for <strong>Filfilu HMS</strong>.</p>
-    <p><a href="${resetUrl}">Reset your password</a> (link expires in 1 hour).</p>
+    <p>You requested a password for <strong>Filfilu HMS</strong>.</p>
+    <p><a href="${resetUrl}">Set a new password</a> (opens the password form — not the login page).</p>
+    <p style="word-break:break-all;font-size:14px;">If the button fails, paste this URL:<br/>${resetUrl}</p>
+    <p>After you set a password you can sign in with email+password or Google. Link expires in 1 hour.</p>
     <p>If you did not request this, you can ignore this email.</p>
   `;
   return sendMail({ to, subject, text, html });

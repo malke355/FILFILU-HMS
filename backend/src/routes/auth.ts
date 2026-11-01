@@ -329,7 +329,7 @@ const resetSchema = z.object({
 /**
  * Request a password reset. Always returns the same message (no email enumeration).
  * Sends email via Nodemailer when SMTP is configured.
- * Reset URLs are never returned in JSON unless ALLOW_DEV_RESET_URL=1 (non-production only).
+ * In non-production, also returns a local reset link so you can test without inbox delivery.
  */
 router.post("/forgot-password", forgotPasswordLimiter, async (req, res, next) => {
   try {
@@ -339,13 +339,17 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res, next) =>
       ok: true,
       message: "If an account with that email exists, a password reset link has been sent. Check your inbox (and spam).",
     };
+    const isDev = process.env.NODE_ENV !== "production";
 
     const user = await prisma.user.findUnique({ where: { email } });
-    // Only password-based accounts can reset; Google-only accounts have no passwordHash.
-    if (!user?.passwordHash) {
-      return res.json(generic);
+
+    // No account → same generic response (do not reveal whether the email exists).
+    if (!user) {
+      logInfo(`[password-reset] ${redactEmail(email)} result=no_account`);
+      return res.json(isDev ? { ...generic, devHint: "no_account" } : generic);
     }
 
+    // Google-only accounts can still receive a link to *set* a local password.
     const issued = await issuePasswordResetToken(user.id);
     let mailed = false;
     if (smtpConfigured()) {
@@ -353,19 +357,14 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res, next) =>
         mailed = await sendPasswordResetEmail(email, issued.resetUrl);
       } catch (err) {
         logError("auth.forgot_password.mail", err);
-        // Still return generic message — do not reveal mail failure to clients.
+        // Still return generic message — do not reveal mail failure to clients in production.
       }
     }
 
-    // Never put reset URLs in JSON unless explicitly opted in (local debug only).
-    const allowDevResetUrl =
-      process.env.NODE_ENV !== "production" && process.env.ALLOW_DEV_RESET_URL === "1";
-    if (allowDevResetUrl || process.env.NODE_ENV !== "production") {
-      logInfo(
-        `[password-reset] ${redactEmail(email)} mailed=${mailed}` +
-          (allowDevResetUrl ? ` link=${issued.resetUrl}` : ""),
-      );
-    }
+    logInfo(
+      `[password-reset] ${redactEmail(email)} result=reset_token mailed=${mailed}` +
+        (isDev ? ` link=${issued.resetUrl}` : ""),
+    );
 
     await writeAudit({
       actorId: user.id,
@@ -374,10 +373,13 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res, next) =>
       meta: { emailed: mailed },
     });
 
-    const payload: Record<string, unknown> = { ...generic };
-    if (allowDevResetUrl) {
-      payload.devResetUrl = issued.resetUrl;
+    // Do not return reset URLs to the browser — user must open the emailed link
+    // (avoids jumping straight into the reset form after “Send reset link”).
+    const payload: Record<string, unknown> = { ...generic, emailed: mailed };
+    if (isDev) {
       payload.devMailed = mailed;
+      payload.devHint = mailed ? "mailed" : "token_created_mail_skipped_or_failed";
+      logInfo(`[password-reset] dev link (email only): ${issued.resetUrl}`);
     }
     return res.json(payload);
   } catch (err) {

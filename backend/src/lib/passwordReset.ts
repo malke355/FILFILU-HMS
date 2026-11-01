@@ -13,8 +13,9 @@ export function createRawResetToken() {
 }
 
 export function buildResetPasswordUrl(rawToken: string) {
-  const base = frontendOrigin().endsWith("/") ? frontendOrigin() : `${frontendOrigin()}/`;
-  const url = new URL("reset-password.html", base);
+  // Prefer clean /reset-password (served by Express) so email clients don’t mishandle .html links.
+  const origin = frontendOrigin().replace(/\/$/, "");
+  const url = new URL("/reset-password", origin);
   url.searchParams.set("token", rawToken);
   return url.toString();
 }

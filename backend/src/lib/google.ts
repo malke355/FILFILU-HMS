@@ -162,9 +162,16 @@ export async function exchangeCodeAndVerify(code: string): Promise<GoogleProfile
 }
 
 export function frontendOrigin() {
-  return (
+  const raw =
     process.env.FRONTEND_ORIGIN?.trim() ||
     process.env.CORS_ORIGIN?.split(",")[0]?.trim() ||
-    "http://127.0.0.1:8080"
-  );
+    "http://127.0.0.1:8080";
+  // Strip accidental quotes from dashboard/.env paste.
+  if (
+    (raw.startsWith('"') && raw.endsWith('"')) ||
+    (raw.startsWith("'") && raw.endsWith("'"))
+  ) {
+    return raw.slice(1, -1).trim() || "http://127.0.0.1:8080";
+  }
+  return raw;
 }
