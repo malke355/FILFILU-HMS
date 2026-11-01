@@ -11,13 +11,17 @@ export function smtpConfigured() {
   );
 }
 
-/** Fail fast in production when mail is required for password reset. */
+/**
+ * Production can boot without SMTP (login/API still work).
+ * Password-reset email stays unavailable until SMTP_* is set on the host.
+ */
 export function assertSmtpProductionConfig() {
   if (!isProduction()) return;
   if (!smtpConfigured()) {
-    throw new Error(
-      "SMTP is required in production (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM). Use a Gmail App Password, not your normal password.",
-    );
+    logInfo("smtp.optional", {
+      message:
+        "SMTP_* not set — password-reset email disabled until SMTP_HOST/USER/PASS/FROM are configured.",
+    });
   }
 }
 

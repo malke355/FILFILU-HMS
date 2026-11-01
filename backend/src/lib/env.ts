@@ -11,31 +11,53 @@ const WEAK_SECRETS = new Set([
   "jwt-secret",
   "replace-with-a-long-random-secret",
   "replace-with-a-long-random-secret-at-least-32-chars",
+  "replace_with_your_jwt_secret",
+  "replace-with-your-jwt-secret",
   "CHANGE_ME",
 ]);
 
 const DEV_CORS_DEFAULT = "http://127.0.0.1:8080,http://localhost:8080";
+
+/** Strip accidental quotes from dashboard/.env paste (e.g. "postgresql://…"). */
+export function stripEnvQuotes(value: string | undefined): string {
+  const s = value?.trim() || "";
+  if (s.length >= 2) {
+    const q = s[0];
+    if ((q === '"' || q === "'") && s[s.length - 1] === q) {
+      return s.slice(1, -1).trim();
+    }
+  }
+  return s;
+}
+
+function readEnv(name: string): string {
+  const cleaned = stripEnvQuotes(process.env[name]);
+  if (process.env[name] !== undefined && process.env[name] !== cleaned) {
+    process.env[name] = cleaned;
+  }
+  return cleaned;
+}
 
 export function isProduction() {
   return process.env.NODE_ENV === "production";
 }
 
 export function parseCorsOrigins(): string[] {
-  const raw = process.env.CORS_ORIGIN?.trim() || (isProduction() ? "" : DEV_CORS_DEFAULT);
+  const raw = readEnv("CORS_ORIGIN") || (isProduction() ? "" : DEV_CORS_DEFAULT);
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 function assertJwtSecret() {
-  const s = process.env.JWT_SECRET?.trim() || "";
-  if (!s || WEAK_SECRETS.has(s) || s.length < 32) {
+  const s = readEnv("JWT_SECRET");
+  if (!s || WEAK_SECRETS.has(s.toLowerCase()) || s.length < 32) {
     throw new Error(
-      "JWT_SECRET is missing, too short (<32), or a known placeholder. Set a strong unique value in backend/.env.",
+      "JWT_SECRET is missing, too short (<32), or a known placeholder. Set a strong unique value in Render Environment (or backend/.env).",
     );
   }
 }
 
 function assertDatabaseUrl() {
-  const url = process.env.DATABASE_URL?.trim() || "";
+  const url = readEnv("DATABASE_URL");
   if (!url) {
     throw new Error("DATABASE_URL is required.");
   }
@@ -65,7 +87,7 @@ function assertCorsAndFrontend() {
     }
   }
 
-  const front = process.env.FRONTEND_ORIGIN?.trim() || "";
+  const front = readEnv("FRONTEND_ORIGIN");
   if (!front) {
     throw new Error("FRONTEND_ORIGIN is required in production (public https site origin).");
   }
@@ -78,7 +100,7 @@ function assertCorsAndFrontend() {
 }
 
 function assertNodeEnv() {
-  const env = process.env.NODE_ENV?.trim();
+  const env = readEnv("NODE_ENV");
   if (!env) {
     // Default to development so local starts remain simple; production deploys must set NODE_ENV.
     process.env.NODE_ENV = "development";
@@ -90,9 +112,9 @@ function assertNodeEnv() {
 }
 
 function assertGoogleIfConfigured() {
-  const id = process.env.GOOGLE_CLIENT_ID?.trim();
-  const secret = process.env.GOOGLE_CLIENT_SECRET?.trim();
-  const redirect = process.env.GOOGLE_REDIRECT_URI?.trim();
+  const id = readEnv("GOOGLE_CLIENT_ID");
+  const secret = readEnv("GOOGLE_CLIENT_SECRET");
+  const redirect = readEnv("GOOGLE_REDIRECT_URI");
   const any = Boolean(id || secret || redirect);
   const all = Boolean(id && secret && redirect);
   if (any && !all) {
@@ -103,10 +125,10 @@ function assertGoogleIfConfigured() {
 }
 
 function assertSmtpIfConfigured() {
-  const host = process.env.SMTP_HOST?.trim();
-  const user = process.env.SMTP_USER?.trim();
-  const pass = process.env.SMTP_PASS?.trim();
-  const from = process.env.SMTP_FROM?.trim();
+  const host = readEnv("SMTP_HOST");
+  const user = readEnv("SMTP_USER");
+  const pass = readEnv("SMTP_PASS");
+  const from = readEnv("SMTP_FROM");
   const any = Boolean(host || user || pass || from);
   const all = Boolean(host && user && pass && from);
   if (any && !all) {
@@ -114,8 +136,9 @@ function assertSmtpIfConfigured() {
       "SMTP is partially configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM together (SMTP_PORT defaults to 587).",
     );
   }
-  if (process.env.SMTP_PORT?.trim()) {
-    const port = Number(process.env.SMTP_PORT);
+  const smtpPort = readEnv("SMTP_PORT");
+  if (smtpPort) {
+    const port = Number(smtpPort);
     if (!Number.isFinite(port) || port < 1 || port > 65535) {
       throw new Error("SMTP_PORT must be a valid TCP port.");
     }

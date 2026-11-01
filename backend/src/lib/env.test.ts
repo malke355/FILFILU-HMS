@@ -51,6 +51,19 @@ describe("assertEnvConfigured", () => {
     expect(() => assertEnvConfigured()).toThrow(/JWT_SECRET/);
   });
 
+  it("strips wrapping quotes from env values", () => {
+    stash();
+    process.env.NODE_ENV = "development";
+    process.env.JWT_SECRET = `"${"a".repeat(32)}-unique-dev-secret"`;
+    process.env.DATABASE_URL = '"postgresql://filfilu:x@127.0.0.1:5434/hms"';
+    process.env.CORS_ORIGIN = '"http://127.0.0.1:8080"';
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    delete process.env.GOOGLE_REDIRECT_URI;
+    expect(() => assertEnvConfigured()).not.toThrow();
+    expect(parseCorsOrigins()).toContain("http://127.0.0.1:8080");
+  });
+
   it("requires https CORS in production", () => {
     stash();
     process.env.NODE_ENV = "production";
