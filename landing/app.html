@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <script src="js/config.js?v=1"></script>
   <script src="js/i18n.js?v=3"></script>
-  <script src="js/auth.js?v=5"></script>
+  <script src="js/auth.js?v=7"></script>
   <style>
     :root {
       --bg: #F4F7FB; --panel: #FFFFFF; --navy: #0B2447; --blue: #1D6FE0; --teal: #1BB6A8;
@@ -262,6 +262,9 @@
             <span id="userEmail">—</span>
           </div>
         </div>
+        <label for="facilitySwitch" style="display:block;font-size:.72rem;font-weight:700;color:var(--muted);margin:.35rem 0 .2rem">Facility</label>
+        <select id="facilitySwitch" aria-label="Active facility" style="width:100%;margin-bottom:.45rem;font:inherit;padding:.35rem .45rem;border-radius:8px;border:1px solid var(--border, #d0d7e2);background:var(--panel, #fff);color:inherit"></select>
+        <button class="ghost" type="button" id="changePasswordBtn">Change password</button>
         <button class="ghost" type="button" id="logoutBtn" data-i18n="app.signOut">Sign out</button>
       </div>
     </aside>
@@ -290,6 +293,10 @@
       const Auth = window.FilfiluAuth;
       const I18n = window.FilfiluI18n;
       const t = (k, v) => I18n.t(k, v);
+      const viewRoot = document.getElementById("viewRoot");
+      if (viewRoot) {
+        viewRoot.innerHTML = '<p style="opacity:.7;padding:1.25rem 0">Loading workspace…</p>';
+      }
       const session = await Auth.bootWorkspace();
       if (!session) return;
       if (session.hydrateWarning) {
@@ -326,6 +333,49 @@
       document.getElementById("userEmail").textContent = session.email;
       document.getElementById("userAvatar").textContent = Auth.initials(session.name);
 
+      const facilitySelect = document.getElementById("facilitySwitch");
+      function paintFacilities(s) {
+        const list = Array.isArray(s.facilities) ? s.facilities : [];
+        facilitySelect.innerHTML = list.length
+          ? list.map((f) => {
+              const id = f.facilityId || f.id;
+              const name = f.name || f.slug || id;
+              const selected = id === s.facilityId ? " selected" : "";
+              return `<option value="${String(id).replace(/"/g, "&quot;")}"${selected}>${String(name).replace(/</g, "&lt;")}</option>`;
+            }).join("")
+          : `<option value="">${s.facilityId || "Default"}</option>`;
+        facilitySelect.disabled = list.length < 2;
+      }
+      paintFacilities(session);
+      facilitySelect.addEventListener("change", async () => {
+        const nextId = facilitySelect.value;
+        if (!nextId || nextId === session.facilityId) return;
+        try {
+          const next = await Auth.switchFacility(nextId);
+          Object.assign(session, next);
+          paintFacilities(session);
+          location.reload();
+        } catch (err) {
+          alert(err.message || "Could not switch facility.");
+          paintFacilities(session);
+        }
+      });
+
+      document.getElementById("changePasswordBtn").addEventListener("click", async () => {
+        const currentPassword = prompt("Current password");
+        if (currentPassword == null) return;
+        const newPassword = prompt("New password (min 6 characters)");
+        if (newPassword == null) return;
+        try {
+          await Auth.changePassword(currentPassword, newPassword);
+          alert("Password updated. Please sign in again.");
+          await Auth.logout();
+          location.href = "login.html";
+        } catch (err) {
+          alert(err.message || "Could not change password.");
+        }
+      });
+
       document.getElementById("logoutBtn").addEventListener("click", async () => {
         await Auth.logout();
         location.href = "login.html";
@@ -353,10 +403,13 @@
       };
 
       const navEl = document.getElementById("nav");
-      const viewRoot = document.getElementById("viewRoot");
       const searchEl = document.getElementById("search");
       const toast = document.getElementById("toast");
-      const items = Auth.NAV[session.role];
+      const items = Auth.NAV[session.role] || [];
+      if (!items.length) {
+        viewRoot.innerHTML = '<div class="panel"><div class="empty">No workspace views for this role.</div></div>';
+        return;
+      }
       let current = items[0].id;
       let query = "";
 
@@ -409,9 +462,101 @@
       }
 
       function go(view) {
-        if (!items.some((i) => i.id === view)) return;
+        if (view !== "patientDetail" && !items.some((i) => i.id === view)) return;
         current = view;
+        if (view !== "patientDetail") delete viewRoot.dataset.patientId;
         render();
+      }
+
+      async function openPatientDetail(patientId) {
+        viewRoot.dataset.patientId = patientId;
+        current = "patientDetail";
+        paintNav();
+        viewRoot.innerHTML = `<div class="panel"><div class="empty">Loading patient…</div></div>`;
+        try {
+          const res = await Auth.getPatient(patientId);
+          const p = res.data;
+          const canHistory = Auth.can(session, "patients.medical_history.read") || Auth.can(session, "clinical.read") || Auth.can(session, "clinical.write");
+          const canEnc = Auth.can(session, "encounters.read") || Auth.can(session, "encounters.create") || Auth.can(session, "patients.read");
+          const canDocs = Auth.can(session, "patients.documents.read");
+          const canUpdate = Auth.can(session, "patients.update");
+          const hist = (p.medicalHistory || []).map((h) =>
+            `<li><strong>${esc(h.category)}</strong> — ${esc(h.title)} <span style="color:var(--muted)">(${esc(h.status)})</span></li>`).join("") || "<li>No history entries</li>";
+          const encs = (p.encounters || []).map((e) =>
+            `<li><strong>${esc(e.encounterNumber)}</strong> ${esc(e.type)} · ${esc(e.status)} · ${esc(new Date(e.visitedAt).toLocaleString())}</li>`).join("") || "<li>No encounters</li>";
+          const docs = (p.documents || []).map((d) =>
+            `<li>${esc(d.originalName)} <span style="color:var(--muted)">(${esc(d.category)} · ${Math.round((d.sizeBytes || 0) / 1024)} KB)</span></li>`).join("") || "<li>No documents</li>";
+          const allergies = (p.allergies || []).map((a) =>
+            `<li>${esc(a.substance)}${a.severity ? " · " + esc(a.severity) : ""}</li>`).join("") || "<li>None recorded</li>";
+          viewRoot.innerHTML = `
+            <div class="actions" style="margin-bottom:0.75rem">
+              <button class="btn soft" type="button" data-go="patients">← Back to list</button>
+              ${Auth.can(session, "encounters.create") ? `<button class="btn" type="button" id="newEncounterBtn">New encounter</button>` : ""}
+              ${canUpdate ? `<button class="btn soft" type="button" id="archivePatientBtn">Archive</button>` : ""}
+            </div>
+            <div class="panel" style="margin-bottom:1rem">
+              <div class="panel-h"><h3>${esc(p.name)}</h3><span>${esc(p.patientNumber || "No MRN")}</span></div>
+              <div class="profile-grid" style="padding:1rem">
+                <div><strong>Phone</strong><p>${esc(p.phone || "—")}</p></div>
+                <div><strong>Email</strong><p>${esc(p.email || "—")}</p></div>
+                <div><strong>DOB / age</strong><p>${p.dateOfBirth ? esc(String(p.dateOfBirth).slice(0, 10)) : "—"} · ${esc(p.age ?? "—")}</p></div>
+                <div><strong>Sex</strong><p>${esc(p.sex || "—")}</p></div>
+                <div><strong>Address</strong><p>${[p.region, p.zone, p.woreda, p.kebele].filter(Boolean).map(esc).join(" / ") || "—"}</p></div>
+                <div><strong>Status</strong><p>${esc(p.status || "active")}</p></div>
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="panel"><div class="panel-h"><h3>Allergies</h3></div><ul style="padding:0.75rem 1.25rem;margin:0">${allergies}</ul></div>
+              <div class="panel"><div class="panel-h"><h3>Emergency contacts</h3></div>
+                <ul style="padding:0.75rem 1.25rem;margin:0">${(p.emergencyContacts || []).map((c) => `<li>${esc(c.name)} · ${esc(c.relationship || "")} · ${esc(c.phone || "")}</li>`).join("") || "<li>None</li>"}</ul>
+              </div>
+            </div>
+            ${canHistory ? `<div class="panel" style="margin-top:1rem"><div class="panel-h"><h3>Medical history</h3></div><ul style="padding:0.75rem 1.25rem;margin:0">${hist}</ul>
+              ${Auth.can(session, "patients.medical_history.manage") || Auth.can(session, "clinical.write") ? `<div class="actions" style="padding:0.75rem 1rem"><button class="btn soft" type="button" id="addHistoryBtn">Add history entry</button></div>` : ""}
+            </div>` : `<div class="panel" style="margin-top:1rem"><div class="empty">Medical history restricted for your role.</div></div>`}
+            ${canEnc ? `<div class="panel" style="margin-top:1rem"><div class="panel-h"><h3>Encounters</h3></div><ul style="padding:0.75rem 1.25rem;margin:0">${encs}</ul></div>` : ""}
+            ${canDocs ? `<div class="panel" style="margin-top:1rem"><div class="panel-h"><h3>Documents</h3></div><ul style="padding:0.75rem 1.25rem;margin:0">${docs}</ul>
+              <p class="help-copy" style="padding:0 1rem 1rem">Downloads require authenticated API access — files are not public.</p>
+            </div>` : ""}`;
+
+          document.getElementById("newEncounterBtn")?.addEventListener("click", async () => {
+            const type = window.prompt("Encounter type: outpatient | emergency | inpatient | follow_up", "outpatient");
+            if (!type) return;
+            try {
+              await Auth.createEncounter(patientId, { type });
+              showToast("Encounter created.");
+              openPatientDetail(patientId);
+            } catch (err) {
+              showToast(err.message || "Could not create encounter.");
+            }
+          });
+          document.getElementById("addHistoryBtn")?.addEventListener("click", async () => {
+            const title = window.prompt("History title (e.g. Hypertension)");
+            if (!title) return;
+            try {
+              await Auth.addMedicalHistory(patientId, { category: "condition", title });
+              showToast("History entry added.");
+              openPatientDetail(patientId);
+            } catch (err) {
+              showToast(err.message || "Could not add history.");
+            }
+          });
+          document.getElementById("archivePatientBtn")?.addEventListener("click", async () => {
+            if (!window.confirm("Archive this patient? They remain in history but leave the active list.")) return;
+            try {
+              await Auth.updatePatient(patientId, { status: "archived" });
+              showToast("Patient archived.");
+              go("patients");
+            } catch (err) {
+              showToast(err.message || "Could not archive.");
+            }
+          });
+          viewRoot.querySelectorAll("[data-go]").forEach((btn) => btn.addEventListener("click", () => go(btn.dataset.go)));
+        } catch (err) {
+          viewRoot.innerHTML = `<div class="panel"><div class="empty">${esc(err.message || "Could not load patient.")}</div>
+            <div class="actions" style="padding:1rem"><button class="btn soft" type="button" data-go="patients">Back</button></div></div>`;
+          viewRoot.querySelectorAll("[data-go]").forEach((btn) => btn.addEventListener("click", () => go(btn.dataset.go)));
+        }
       }
 
       function renderOverview() {
@@ -522,11 +667,12 @@
         if (current === "appointments") {
           const isDoctor = session.role === "doctor";
           const isAdminOps = Auth.can(session, "appointments:manage") && session.role === "admin";
+          const isFrontDesk = Auth.can(session, "appointments.manage") || Auth.can(session, "appointments:manage");
           const canCancelOwn = session.role === "patient";
-          const showActions = isDoctor || isAdminOps || canCancelOwn;
-          const headers = ["Date", "Time", "Patient", "Doctor", "Reason", "Status"].concat(showActions ? ["Actions"] : []);
+          const showActions = isDoctor || isAdminOps || canCancelOwn || isFrontDesk;
+          const headers = ["Ref", "Date", "Time", "Patient", "Doctor", "Reason", "Status"].concat(showActions ? ["Actions"] : []);
           const rows = Auth.rls.appointments(session)
-            .filter((a) => matchQuery([a.date, a.dept, a.reason, Auth.patientName(a.patientId), Auth.staffName(a.doctorId)]))
+            .filter((a) => matchQuery([a.appointmentNumber || "", a.date, a.dept, a.reason, Auth.patientName(a.patientId), Auth.staffName(a.doctorId)]))
             .slice()
             .sort((a, b) => Number(isUrgentReason(b.reason)) - Number(isUrgentReason(a.reason)));
           const dupGroups = isAdminOps ? Auth.findDuplicateAppointmentGroups(session) : [];
@@ -538,22 +684,49 @@
                 actions.push(`<button class="btn soft tiny" type="button" data-appt-action="reschedule" data-id="${esc(a.id)}" data-date="${esc(a.date)}" data-time="${esc(a.time)}">Reschedule</button>`);
                 actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${esc(a.id)}">Decline</button>`);
               }
-              if (isDoctor && a.doctorId === session.staffId && a.status === "confirmed") {
+              if (isDoctor && a.doctorId === session.staffId && (a.status === "confirmed" || a.status === "scheduled")) {
                 actions.push(`<button class="btn tiny" type="button" data-appt-action="complete" data-id="${esc(a.id)}">Complete</button>`);
                 actions.push(`<button class="btn soft tiny" type="button" data-appt-action="no_show" data-id="${esc(a.id)}">No-show</button>`);
               }
-              if (isAdminOps && (a.status === "requested" || a.status === "confirmed")) {
+              if (isAdminOps && (a.status === "requested" || a.status === "confirmed" || a.status === "scheduled")) {
                 actions.push(`<button class="btn soft tiny" type="button" data-appt-action="reassign" data-id="${esc(a.id)}" data-doctor="${esc(a.doctorId)}">Reassign</button>`);
                 actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${esc(a.id)}">Cancel</button>`);
               }
-              if (canCancelOwn && a.patientId === session.patientId && (a.status === "requested" || a.status === "confirmed")) {
+              if (isFrontDesk && ["scheduled", "confirmed", "requested"].includes(a.status)) {
+                actions.push(`<button class="btn tiny" type="button" data-checkin="${esc(a.id)}">Check in</button>`);
+              }
+              if (canCancelOwn && a.patientId === session.patientId && (a.status === "requested" || a.status === "confirmed" || a.status === "scheduled")) {
                 actions.push(`<button class="btn soft tiny" type="button" data-appt-action="cancel" data-id="${esc(a.id)}">Cancel</button>`);
               }
               const actionCell = showActions
                 ? `<td class="row-actions">${actions.join("") || "—"}</td>`
                 : "";
-              return `<tr><td>${esc(a.date)}</td><td>${esc(a.time)}</td><td>${esc(Auth.patientName(a.patientId))}</td><td>${esc(Auth.staffName(a.doctorId))}</td><td>${reasonCell(a.reason, a.dept)}</td><td>${badge(a.status)}</td>${actionCell}</tr>`;
+              return `<tr><td>${esc(a.appointmentNumber || "—")}</td><td>${esc(a.date)}</td><td>${esc(a.time)}</td><td>${esc(Auth.patientName(a.patientId))}</td><td>${esc(Auth.staffName(a.doctorId))}</td><td>${reasonCell(a.reason, a.dept)}</td><td>${badge(a.status)}</td>${actionCell}</tr>`;
             }));
+          if (isFrontDesk) {
+            const patients = Auth.DB.patients || [];
+            const pOpts = patients.map((p) => `<option value="${esc(p.id)}">${esc(p.patientNumber || "")} · ${esc(p.name)}</option>`).join("");
+            const dOpts = doctorOptions.map((d) => `<option value="${esc(d.id)}" data-dept="${esc(d.dept || "General")}">${esc(d.name)}</option>`).join("");
+            html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Front desk booking</h3><span>API · /appointments/book · walk-ins</span></div>
+              <p class="help-copy">Book against live availability. Walk-ins create an appointment + queue ticket. Check-in adds the patient to today's queue without duplicates.</p>
+              <form id="bookApptForm" class="visit-form open" style="margin-top:.5rem">
+                <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:.65rem">
+                  <label>Patient<select name="patientId" required><option value="">Select</option>${pOpts}</select></label>
+                  <label>Doctor<select name="doctorId" id="bookDoctor" required><option value="">Select</option>${dOpts}</select></label>
+                  <label>Date<input name="date" id="bookDate" type="date" required /></label>
+                  <label>Time<select name="time" id="bookTime" required><option value="">Select doctor & date first</option></select></label>
+                  <label>Department<input name="dept" id="bookDept" required placeholder="e.g. General" /></label>
+                  <label>Type<select name="type"><option value="general">General</option><option value="follow_up">Follow-up</option><option value="specialist">Specialist</option><option value="laboratory">Laboratory</option></select></label>
+                  <label style="grid-column:1/-1">Reason<input name="reason" maxlength="200" /></label>
+                </div>
+                <div class="actions" style="margin-top:.75rem">
+                  <button class="btn" type="submit">Book appointment</button>
+                  <button class="btn soft" type="button" id="walkInBtn">Walk-in now</button>
+                  <button class="btn soft" type="button" data-go="queue">Open queue</button>
+                </div>
+              </form>
+            </div>` + html;
+          }
           if (isAdminOps) {
             const dupCount = dupGroups.reduce((n, g) => n + g.length - 1, 0);
             html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Clinic oversight</h3><span>API · appointments:manage</span></div>
@@ -609,10 +782,106 @@
           }
         }
 
+        if (current === "calendar" && (Auth.can(session, "appointments.manage") || Auth.can(session, "appointments:manage") || Auth.can(session, "appointments.read"))) {
+          html = `<div class="panel"><div class="panel-h"><h3>Appointment calendar</h3><span>Daily / weekly from live API</span></div>
+            <div class="actions" style="padding:0.75rem 1rem;gap:0.5rem;align-items:center">
+              <label>From <input type="date" id="calFrom" /></label>
+              <label>To <input type="date" id="calTo" /></label>
+              <button class="btn" type="button" id="calLoad">Load</button>
+              <button class="btn soft" type="button" id="calToday">Today</button>
+              <button class="btn soft" type="button" id="calWeek">This week</button>
+            </div>
+            <div id="calBody"><div class="empty">Choose a range and load.</div></div>
+          </div>`;
+        }
+
+        if (current === "queue" && (Auth.can(session, "queue.read") || Auth.can(session, "queue.manage") || Auth.can(session, "appointments.manage") || Auth.can(session, "appointments:manage"))) {
+          const today = new Date().toISOString().slice(0, 10);
+          html = `<div class="panel" style="margin-bottom:1rem"><div class="panel-h"><h3>Queue board</h3><span>Polling fallback · no public PHI</span></div>
+            <p class="help-copy">Shows MRN/name, ticket, wait time, and priority only — not clinical notes. Poll refreshes every 8s while this view is open.</p>
+            <div class="actions" style="align-items:center;gap:0.5rem">
+              <label>Date <input type="date" id="queueDate" value="${esc(today)}" /></label>
+              <label>Dept <input id="queueDept" placeholder="GENERAL" value="GENERAL" /></label>
+              <button class="btn" type="button" id="queueRefresh">Refresh</button>
+              <button class="btn soft" type="button" id="queueCallNext">Call next</button>
+            </div>
+          </div>
+          <div id="queueBody"><div class="panel"><div class="empty">Loading queue…</div></div></div>`;
+        }
+
         if (current === "patients" || current === "ward") {
-          html = table(["Patient", "Age", "Condition", "Doctor", "Location"],
-            Auth.rls.patients(session).filter((p) => matchQuery([p.name, p.condition, p.ward || "", p.bed || ""])).map((p) =>
-              `<tr><td><strong>${esc(p.name)}</strong></td><td>${esc(p.age)}${p.sex ? " · " + esc(p.sex) : ""}</td><td>${esc(p.condition)}</td><td>${esc(Auth.staffName(p.doctorId))}</td><td>${p.ward ? esc(p.ward) + (p.bed ? " / " + esc(p.bed) : "") : "Outpatient"}</td></tr>`));
+          const canRegister = Auth.can(session, "patients.create");
+          const rows = Auth.rls.patients(session)
+            .filter((p) => matchQuery([p.patientNumber || "", p.name, p.phone || "", p.email || "", p.ward || "", p.bed || ""]))
+            .map((p) =>
+              `<tr>
+                <td><strong>${esc(p.patientNumber || "—")}</strong></td>
+                <td><button class="btn soft tiny" type="button" data-open-patient="${esc(p.id)}">${esc(p.name)}</button></td>
+                <td>${esc(p.phone || "—")}</td>
+                <td>${esc(p.age ?? "—")}${p.sex ? " · " + esc(p.sex) : ""}</td>
+                <td>${esc(p.status || "active")}</td>
+                <td>${p.createdAt ? esc(new Date(p.createdAt).toLocaleDateString()) : "—"}</td>
+              </tr>`);
+          html = `
+            <div class="panel" style="margin-bottom:1rem">
+              <div class="panel-h"><h3>Patient registry</h3><span>${rows.length} loaded · facility-scoped search via API</span></div>
+              <p class="help-copy">Search uses the filter box above (name, MRN, phone). Open a patient for profile, history, encounters, and documents.</p>
+              <div class="actions">
+                ${canRegister ? `<button class="btn" type="button" data-go="register">Register patient</button>` : ""}
+                <button class="btn soft" type="button" id="refreshPatients">Refresh list</button>
+              </div>
+            </div>
+            ${table(["MRN", "Name", "Phone", "Age / sex", "Status", "Registered"], rows)}`;
+        }
+
+        if (current === "register" && Auth.can(session, "patients.create")) {
+          html = `
+            <div class="panel">
+              <div class="panel-h"><h3>Register patient</h3><span>Facility MRN assigned automatically</span></div>
+              <p class="help-copy">Required: first name, last name. National ID is optional. Possible duplicates are warned — never auto-merged.</p>
+              <form id="registerPatientForm" class="profile-grid" style="grid-template-columns:1fr 1fr;gap:0.75rem 1rem;padding:1rem">
+                <label>First name *<input name="firstName" required maxlength="80" /></label>
+                <label>Middle name<input name="middleName" maxlength="80" /></label>
+                <label>Last name *<input name="lastName" required maxlength="80" /></label>
+                <label>Date of birth<input name="dateOfBirth" type="date" /></label>
+                <label>Sex
+                  <select name="sex">
+                    <option value="">—</option>
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                    <option value="other">Other</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                </label>
+                <label>Phone<input name="phone" maxlength="40" /></label>
+                <label>Alt phone<input name="phoneAlt" maxlength="40" /></label>
+                <label>Email<input name="email" type="email" maxlength="120" /></label>
+                <label>Region<input name="region" maxlength="80" /></label>
+                <label>Zone<input name="zone" maxlength="80" /></label>
+                <label>Woreda<input name="woreda" maxlength="80" /></label>
+                <label>Kebele<input name="kebele" maxlength="80" /></label>
+                <label style="grid-column:1/-1">Address detail<textarea name="addressDetail" rows="2" maxlength="400"></textarea></label>
+                <label>ID type
+                  <select name="idSystem">
+                    <option value="">None</option>
+                    <option value="national_id">National ID</option>
+                    <option value="passport">Passport</option>
+                    <option value="driver_license">Driver license</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label>ID number<input name="idValue" maxlength="120" /></label>
+                <label>Emergency contact name<input name="ecName" maxlength="120" /></label>
+                <label>Relationship<input name="ecRel" maxlength="80" /></label>
+                <label>Emergency phone<input name="ecPhone" maxlength="40" /></label>
+                <label style="grid-column:1/-1">Registration notes<textarea name="registrationNotes" rows="2" maxlength="1000"></textarea></label>
+                <div id="dupWarn" style="grid-column:1/-1;display:none;color:#b45309;font-weight:700"></div>
+                <div class="form-actions" style="grid-column:1/-1">
+                  <button class="btn" type="submit" id="registerPatientSubmit">Register</button>
+                  <button class="btn soft" type="button" data-go="patients">Cancel</button>
+                </div>
+              </form>
+            </div>`;
         }
 
         if (current === "exchanges") {
@@ -721,6 +990,270 @@
           if (b.dataset.specialty) viewRoot.dataset.specFilter = b.dataset.specialty;
           go(b.dataset.go);
         }));
+        viewRoot.querySelectorAll("[data-open-patient]").forEach((b) => {
+          b.addEventListener("click", () => openPatientDetail(b.dataset.openPatient));
+        });
+
+        if (window.__filfiluQueuePoll) {
+          clearInterval(window.__filfiluQueuePoll);
+          window.__filfiluQueuePoll = null;
+        }
+
+        const bookForm = document.getElementById("bookApptForm");
+        if (bookForm) {
+          const doctorEl = document.getElementById("bookDoctor");
+          const dateEl = document.getElementById("bookDate");
+          const timeEl = document.getElementById("bookTime");
+          const deptEl = document.getElementById("bookDept");
+          const loadSlots = async () => {
+            if (!doctorEl.value || !dateEl.value) return;
+            try {
+              const res = await Auth.appointmentAvailability(doctorEl.value, dateEl.value, 30);
+              const slots = res.data?.slots || [];
+              timeEl.innerHTML = slots.length
+                ? slots.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("")
+                : `<option value="">No open slots</option>`;
+              const opt = doctorEl.selectedOptions[0];
+              if (opt?.dataset?.dept && deptEl && !deptEl.value) deptEl.value = opt.dataset.dept;
+            } catch (err) {
+              showToast(err.message || "Could not load slots.");
+            }
+          };
+          doctorEl?.addEventListener("change", loadSlots);
+          dateEl?.addEventListener("change", loadSlots);
+          bookForm.addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            const fd = new FormData(bookForm);
+            try {
+              const res = await Auth.bookAppointment({
+                patientId: String(fd.get("patientId")),
+                doctorId: String(fd.get("doctorId")),
+                date: String(fd.get("date")),
+                time: String(fd.get("time")),
+                dept: String(fd.get("dept")),
+                type: String(fd.get("type") || "general"),
+                reason: String(fd.get("reason") || "") || null,
+              });
+              showToast(`Booked ${res.data.appointmentNumber || res.data.id}`);
+              await Auth.hydrateFromApi(session);
+              render();
+            } catch (err) {
+              showToast(err.message || "Booking failed.");
+            }
+          });
+          document.getElementById("walkInBtn")?.addEventListener("click", async () => {
+            const fd = new FormData(bookForm);
+            const patientId = String(fd.get("patientId") || "");
+            const doctorId = String(fd.get("doctorId") || "");
+            const dept = String(fd.get("dept") || "GENERAL");
+            if (!patientId || !doctorId) return showToast("Select patient and doctor for walk-in.");
+            try {
+              const res = await Auth.createWalkIn({
+                patientId,
+                doctorId,
+                dept,
+                reason: String(fd.get("reason") || "") || null,
+              });
+              showToast(`Walk-in ${res.data.queue.queueNumber}`);
+              await Auth.hydrateFromApi(session);
+              go("queue");
+            } catch (err) {
+              showToast(err.message || "Walk-in failed.");
+            }
+          });
+        }
+
+        viewRoot.querySelectorAll("[data-checkin]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            btn.disabled = true;
+            try {
+              const res = await Auth.checkInAppointment(btn.dataset.checkin);
+              showToast(res.data.duplicate ? "Already checked in." : `Checked in · ${res.data.queue.queueNumber}`);
+              go("queue");
+            } catch (err) {
+              showToast(err.message || "Check-in failed.");
+              btn.disabled = false;
+            }
+          });
+        });
+
+        const paintQueue = async () => {
+          const body = document.getElementById("queueBody");
+          if (!body) return;
+          const date = document.getElementById("queueDate")?.value || new Date().toISOString().slice(0, 10);
+          const dept = document.getElementById("queueDept")?.value || "GENERAL";
+          try {
+            const res = await Auth.fetchQueue({ date, dept });
+            const rows = res.data || [];
+            const groups = {
+              waiting: rows.filter((r) => r.status === "waiting"),
+              called: rows.filter((r) => r.status === "called"),
+              in_service: rows.filter((r) => r.status === "in_service"),
+              completed: rows.filter((r) => r.status === "completed"),
+            };
+            const block = (title, list, actions) =>
+              `<div class="panel" style="margin-bottom:0.75rem"><div class="panel-h"><h3>${title}</h3><span>${list.length}</span></div>
+                <div class="list">${list.map((r) => {
+                  const name = r.patient?.name || "Patient";
+                  const mrn = r.patient?.patientNumber || "";
+                  return `<div class="list-item"><div><strong>${esc(r.queueNumber)}</strong> · ${esc(mrn)} ${esc(name)}
+                    <p>${esc(r.priority)} · wait ${esc(r.waitingMinutes)}m · ${esc(r.departmentKey)}</p></div>
+                    <div class="row-actions">${actions(r)}</div></div>`;
+                }).join("") || '<div class="empty">None</div>'}</div></div>`;
+            body.innerHTML =
+              block("Waiting", groups.waiting, (r) =>
+                `<button class="btn tiny" type="button" data-q="${esc(r.id)}" data-qstatus="called">Call</button>
+                 <button class="btn soft tiny" type="button" data-q="${esc(r.id)}" data-qstatus="skipped">Skip</button>`) +
+              block("Called", groups.called, (r) =>
+                `<button class="btn tiny" type="button" data-q="${esc(r.id)}" data-qstatus="in_service">Start</button>
+                 <button class="btn soft tiny" type="button" data-q="${esc(r.id)}" data-qstatus="waiting">Recall wait</button>`) +
+              block("In service", groups.in_service, (r) =>
+                `<button class="btn tiny" type="button" data-q="${esc(r.id)}" data-qstatus="completed">Complete</button>`) +
+              block("Completed", groups.completed, () => "");
+            body.querySelectorAll("[data-q]").forEach((b) => {
+              b.addEventListener("click", async () => {
+                try {
+                  let skipReason = null;
+                  if (b.dataset.qstatus === "skipped") {
+                    skipReason = window.prompt("Skip reason") || "skipped";
+                  }
+                  await Auth.transitionQueue(b.dataset.q, b.dataset.qstatus, skipReason);
+                  paintQueue();
+                } catch (err) {
+                  showToast(err.message || "Queue update failed.");
+                }
+              });
+            });
+          } catch (err) {
+            body.innerHTML = `<div class="panel"><div class="empty">${esc(err.message || "Queue unavailable")}</div></div>`;
+          }
+        };
+        if (current === "queue") {
+          paintQueue();
+          window.__filfiluQueuePoll = setInterval(paintQueue, 8000);
+          document.getElementById("queueRefresh")?.addEventListener("click", paintQueue);
+          document.getElementById("queueCallNext")?.addEventListener("click", async () => {
+            try {
+              const dept = document.getElementById("queueDept")?.value || "GENERAL";
+              const date = document.getElementById("queueDate")?.value;
+              await Auth.callNextQueue({ dept, date });
+              showToast("Next patient called.");
+              paintQueue();
+            } catch (err) {
+              showToast(err.message || "Call next failed.");
+            }
+          });
+        }
+
+        const calLoad = async () => {
+          const body = document.getElementById("calBody");
+          if (!body) return;
+          const from = document.getElementById("calFrom")?.value;
+          const to = document.getElementById("calTo")?.value;
+          if (!from || !to) return showToast("Select from/to dates.");
+          try {
+            const res = await Auth.appointmentCalendar(from, to);
+            const rows = res.data || [];
+            body.innerHTML = table(
+              ["Date", "Time", "Ref", "Patient", "Doctor", "Dept", "Status"],
+              rows.map((a) =>
+                `<tr><td>${esc(a.date)}</td><td>${esc(a.time)}${a.endTime ? "–" + esc(a.endTime) : ""}</td><td>${esc(a.appointmentNumber || "—")}</td><td>${esc(a.patient?.name || a.patientId)}</td><td>${esc(a.doctor?.name || a.doctorId)}</td><td>${esc(a.dept)}</td><td>${badge(a.status)}</td></tr>`),
+            );
+          } catch (err) {
+            body.innerHTML = `<div class="empty">${esc(err.message || "Calendar load failed")}</div>`;
+          }
+        };
+        if (current === "calendar") {
+          const today = new Date();
+          const iso = today.toISOString().slice(0, 10);
+          const fromEl = document.getElementById("calFrom");
+          const toEl = document.getElementById("calTo");
+          if (fromEl && !fromEl.value) fromEl.value = iso;
+          if (toEl && !toEl.value) toEl.value = iso;
+          document.getElementById("calLoad")?.addEventListener("click", calLoad);
+          document.getElementById("calToday")?.addEventListener("click", () => {
+            if (fromEl) fromEl.value = iso;
+            if (toEl) toEl.value = iso;
+            calLoad();
+          });
+          document.getElementById("calWeek")?.addEventListener("click", () => {
+            const end = new Date(today);
+            end.setDate(end.getDate() + 6);
+            if (fromEl) fromEl.value = iso;
+            if (toEl) toEl.value = end.toISOString().slice(0, 10);
+            calLoad();
+          });
+          calLoad();
+        }
+
+        document.getElementById("refreshPatients")?.addEventListener("click", async () => {
+          try {
+            await Auth.hydrateFromApi(session);
+            Object.assign(session, Auth.session() || session);
+            showToast("Patient list refreshed.");
+            render();
+          } catch (err) {
+            showToast(err.message || "Refresh failed.");
+          }
+        });
+        const registerForm = document.getElementById("registerPatientForm");
+        if (registerForm) {
+          registerForm.addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            const fd = new FormData(registerForm);
+            const payload = {
+              firstName: String(fd.get("firstName") || "").trim(),
+              middleName: String(fd.get("middleName") || "").trim() || null,
+              lastName: String(fd.get("lastName") || "").trim(),
+              dateOfBirth: String(fd.get("dateOfBirth") || "") || null,
+              sex: String(fd.get("sex") || "") || null,
+              phone: String(fd.get("phone") || "").trim() || null,
+              phoneAlt: String(fd.get("phoneAlt") || "").trim() || null,
+              email: String(fd.get("email") || "").trim() || null,
+              region: String(fd.get("region") || "").trim() || null,
+              zone: String(fd.get("zone") || "").trim() || null,
+              woreda: String(fd.get("woreda") || "").trim() || null,
+              kebele: String(fd.get("kebele") || "").trim() || null,
+              addressDetail: String(fd.get("addressDetail") || "").trim() || null,
+              registrationNotes: String(fd.get("registrationNotes") || "").trim() || null,
+              acknowledgeDuplicates: registerForm.dataset.ackDup === "1",
+            };
+            const idSystem = String(fd.get("idSystem") || "");
+            const idValue = String(fd.get("idValue") || "").trim();
+            if (idSystem && idValue) payload.identifier = { system: idSystem, value: idValue };
+            const ecName = String(fd.get("ecName") || "").trim();
+            if (ecName) {
+              payload.emergencyContact = {
+                name: ecName,
+                relationship: String(fd.get("ecRel") || "").trim() || null,
+                phone: String(fd.get("ecPhone") || "").trim() || null,
+              };
+            }
+            const submitBtn = document.getElementById("registerPatientSubmit");
+            if (submitBtn) submitBtn.disabled = true;
+            try {
+              const res = await Auth.registerPatient(payload);
+              showToast(`Registered ${res.data.patientNumber || res.data.name}`);
+              await Auth.hydrateFromApi(session);
+              openPatientDetail(res.data.id);
+            } catch (err) {
+              if (err.status === 409 && err.body?.code === "POSSIBLE_DUPLICATES") {
+                const warn = document.getElementById("dupWarn");
+                const names = (err.body.duplicates || []).map((d) => `${d.name} (${d.patientNumber || d.patientId})`).join(", ");
+                if (warn) {
+                  warn.style.display = "block";
+                  warn.textContent = `Possible duplicates: ${names}. Submit again to acknowledge and continue.`;
+                }
+                registerForm.dataset.ackDup = "1";
+                showToast("Possible duplicates found — review, then submit again to continue.");
+              } else {
+                showToast(err.message || "Registration failed.");
+              }
+            } finally {
+              if (submitBtn) submitBtn.disabled = false;
+            }
+          });
+        }
         viewRoot.querySelectorAll("[data-spec]").forEach((b) => b.addEventListener("click", () => {
           viewRoot.dataset.specFilter = b.dataset.spec;
           render();

@@ -7,20 +7,147 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Roles/status stored as strings (admin|doctor|nurse|patient, etc.)
+// ─── Platform / Facility (multi-tenant) ─────────────────────────────────────
+
+model Facility {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  status    String   @default("active") // active | suspended | archived
+  timezone  String   @default("Africa/Addis_Ababa")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  settings     FacilitySettings?
+  subscription FacilitySubscription?
+  memberships  FacilityMembership[]
+  departments  Department[]
+  staff        Staff[]
+  patients     Patient[]
+  appointments Appointment[]
+  shifts       Shift[]
+  exchanges    Exchange[]
+  doctorPublic DoctorPublic[]
+  schedules    DoctorSchedule[]
+  notifications Notification[]
+  contactMessages ContactMessage[]
+  bookingRequests BookingRequest[]
+  auditLogs    AuditLog[]
+  patientNumberSequence PatientNumberSequence?
+  encounters   Encounter[]
+  patientDocuments PatientDocument[]
+  medicalHistoryEntries MedicalHistoryEntry[]
+  appointmentNumberSequence AppointmentNumberSequence?
+  appointmentStatusEvents AppointmentStatusEvent[]
+  queueEntries QueueEntry[]
+  queueNumberSequences QueueNumberSequence[]
+  providerUnavailabilities ProviderUnavailability[]
+  notificationJobs NotificationJob[]
+}
+
+model FacilitySettings {
+  id         String   @id @default(cuid())
+  facilityId String   @unique
+  locale     String   @default("en")
+  /// JSON: patientNumber {prefix,facilityCode,padWidth}, locationLabels, idTypes
+  featuresJson String @default("{}")
+  brandingJson String @default("{}")
+  updatedAt  DateTime @updatedAt
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+}
+
+/// Atomic per-facility MRN counter (allocated via INSERT…ON CONFLICT increment).
+model PatientNumberSequence {
+  id           String   @id @default(cuid())
+  facilityId   String   @unique
+  prefix       String   @default("FIL")
+  facilityCode String   @default("001")
+  nextValue    Int      @default(1)
+  padWidth     Int      @default(6)
+  updatedAt    DateTime @updatedAt
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+}
+
+model FacilitySubscription {
+  id         String    @id @default(cuid())
+  facilityId String    @unique
+  planCode   String    @default("pilot")
+  status     String    @default("active") // active | trial | past_due | cancelled
+  seatLimit  Int       @default(25)
+  periodStart DateTime @default(now())
+  periodEnd   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+}
+
+model FacilityMembership {
+  id         String   @id @default(cuid())
+  userId     String
+  facilityId String
+  /// Facility-scoped role: admin | doctor | nurse | patient (platform super_admin uses User.platformRole)
+  role       String
+  status     String   @default("active") // active | invited | suspended
+  staffId    String?
+  title      String?
+  ward       String?
+  dept       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  facility Facility  @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  staff    Staff?    @relation(fields: [staffId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, facilityId])
+  @@index([facilityId, role])
+  @@index([staffId])
+}
+
+/// Global permission catalog (codes match lib/rbac.ts).
+model Permission {
+  id          String @id @default(cuid())
+  code        String @unique
+  description String?
+
+  roles RolePermission[]
+}
+
+/// Maps role code → permission codes (seeded; facility-custom roles later).
+model RolePermission {
+  id           String @id @default(cuid())
+  role         String
+  permissionId String
+
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId])
+  @@index([role])
+}
+
+// ─── Identity ───────────────────────────────────────────────────────────────
 
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
   passwordHash  String?
   name          String
+  /// Compatibility mirror of active facility membership role (or platformRole).
   role          String
+  /// Platform-level role: null | super_admin | support
+  platformRole  String?
+  /// active | inactive — inactive users cannot authenticate or use protected APIs.
+  status        String   @default("active")
   title         String?
   picture       String?
   googleSub     String?  @unique
   emailVerified Boolean  @default(false)
-  // Bumped on logout / deactivate / role change / password reset to revoke JWTs early.
   tokenVersion  Int      @default(0)
+  /// Default facility for new sessions when X-Facility-Id is absent.
+  defaultFacilityId String?
   staffId       String?  @unique
   patientId     String?  @unique
   ward          String?
@@ -32,9 +159,34 @@ model User {
   patient             Patient?             @relation(fields: [patientId], references: [id])
   notifications       Notification[]
   passwordResetTokens PasswordResetToken[]
+  memberships         FacilityMembership[]
+  authSessions        AuthSession[]
 }
 
-// One-time tokens for server-side password reset (not Firebase).
+/// Refresh-token sessions (hashed). Access JWT stays short-lived in filfilu_token cookie.
+model AuthSession {
+  id               String    @id @default(cuid())
+  userId           String
+  /// SHA-256 of the refresh token (never store raw refresh tokens).
+  refreshTokenHash String    @unique
+  /// Rotation family — reuse of an old token revokes the whole family.
+  familyId         String
+  facilityId       String?
+  userAgent        String?
+  ip               String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  replacedById     String?
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
 model PasswordResetToken {
   id        String    @id @default(cuid())
   userId    String
@@ -48,87 +200,415 @@ model PasswordResetToken {
   @@index([userId])
 }
 
+// ─── Facility-scoped operational models ─────────────────────────────────────
+
 model Department {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  facilityId String
+  name       String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@unique([facilityId, name])
+  @@index([facilityId])
 }
 
 model Staff {
-  id        String   @id @default(cuid())
-  name      String
-  role      String
-  dept      String
-  ward      String?
-  phone     String?
-  status    String   @default("active")
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  facilityId String
+  name       String
+  role       String
+  dept       String
+  ward       String?
+  phone      String?
+  status     String   @default("active")
+  createdAt  DateTime @default(now())
 
+  facility        Facility             @relation(fields: [facilityId], references: [id], onDelete: Cascade)
   user            User?
-  patients        Patient[]        @relation("PrimaryDoctor")
-  appointments    Appointment[]    @relation("DoctorAppointments")
+  memberships     FacilityMembership[]
+  patients        Patient[]            @relation("PrimaryDoctor")
+  appointments    Appointment[]        @relation("DoctorAppointments")
   shifts          Shift[]
-  exchangesFrom   Exchange[]       @relation("ExchangeFrom")
-  exchangesTo     Exchange[]       @relation("ExchangeTo")
+  exchangesFrom   Exchange[]           @relation("ExchangeFrom")
+  exchangesTo     Exchange[]           @relation("ExchangeTo")
   doctorSchedules DoctorSchedule[]
   publicProfile   DoctorPublic?
+
+  @@index([facilityId])
+  @@index([facilityId, role])
+  @@index([facilityId, status])
 }
 
 model Patient {
-  id        String   @id @default(cuid())
-  name      String
-  age       Int
-  sex       String?
-  blood     String?
-  phone     String?
-  condition String?
-  ward      String?
-  bed       String?
-  doctorId  String?
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  facilityId String
+  /// Facility-local MRN (stable after registration). Unique per facility.
+  patientNumber String?
+  /// Display name (kept for compatibility; prefer first/middle/last).
+  name       String
+  firstName  String?
+  middleName String?
+  lastName   String?
+  dateOfBirth DateTime?
+  /// Compatibility mirror; prefer dateOfBirth when present.
+  age        Int?
+  /// male | female | other | unknown — documented in PATIENT_DATA_MODEL.md
+  sex        String?
+  blood      String?
+  nationality String?
+  maritalStatus String?
+  occupation String?
+  photoPath  String?
+  phone      String?
+  phoneAlt   String?
+  email      String?
+  /// Configurable location levels (labels via FacilitySettings.featuresJson.locationLabels).
+  region     String?
+  zone       String?
+  woreda     String?
+  kebele     String?
+  addressDetail String?
+  condition  String?
+  ward       String?
+  bed        String?
+  doctorId   String?
+  /// active | archived
+  status     String   @default("active")
+  registeredById String?
+  registrationNotes String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  doctor       Staff?        @relation("PrimaryDoctor", fields: [doctorId], references: [id])
+  facility     Facility                  @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  doctor       Staff?                    @relation("PrimaryDoctor", fields: [doctorId], references: [id])
   user         User?
   appointments Appointment[]
+  identifiers  PatientIdentifier[]
+  emergencyContacts PatientEmergencyContact[]
+  allergies    PatientAllergy[]
+  medicalHistory MedicalHistoryEntry[]
+  encounters   Encounter[]
+  documents    PatientDocument[]
 
+  @@unique([facilityId, patientNumber])
+  @@index([facilityId])
+  @@index([facilityId, name])
+  @@index([facilityId, firstName, lastName])
+  @@index([facilityId, phone])
+  @@index([facilityId, email])
+  @@index([facilityId, status])
+  @@index([facilityId, createdAt])
   @@index([doctorId])
   @@index([ward])
 }
 
+model PatientIdentifier {
+  id         String   @id @default(cuid())
+  patientId  String
+  facilityId String
+  /// e.g. national_id | passport | driver_license | other (facility-configurable)
+  system     String
+  value      String
+  createdAt  DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([facilityId, system, value])
+  @@index([patientId])
+  @@index([facilityId])
+  @@index([facilityId, value])
+}
+
+model PatientEmergencyContact {
+  id         String  @id @default(cuid())
+  patientId  String
+  name       String
+  relationship String?
+  phone      String?
+  address    String?
+  isPrimary  Boolean @default(false)
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+}
+
+model PatientAllergy {
+  id         String   @id @default(cuid())
+  patientId  String
+  substance  String
+  reaction   String?
+  severity   String?  // mild | moderate | severe
+  notedAt    DateTime @default(now())
+  active     Boolean  @default(true)
+  createdById String?
+  updatedAt  DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+}
+
+/// Structured medical history (separate from encounters).
+model MedicalHistoryEntry {
+  id          String   @id @default(cuid())
+  facilityId  String
+  patientId   String
+  /// condition | surgery | family | medication_current | medication_past | lifestyle | other
+  category    String
+  title       String
+  details     String?
+  /// active | inactive
+  status      String   @default("active")
+  startedOn   DateTime?
+  endedOn     DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  patient  Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId, patientId])
+  @@index([patientId, category])
+  @@index([patientId, status])
+}
+
+/// Visit / encounter foundation (clinical documentation is Section 6).
+model Encounter {
+  id              String   @id @default(cuid())
+  facilityId      String
+  patientId       String
+  encounterNumber String
+  /// outpatient | emergency | inpatient | follow_up
+  type            String
+  visitedAt       DateTime @default(now())
+  departmentId    String?
+  doctorId        String?
+  /// open | in_progress | completed | cancelled
+  status          String   @default("open")
+  notes           String?
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  facility  Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  documents PatientDocument[]
+
+  @@unique([facilityId, encounterNumber])
+  @@index([facilityId, patientId])
+  @@index([facilityId, visitedAt])
+  @@index([facilityId, status])
+  @@index([doctorId])
+}
+
+/// Private patient documents (filesystem storage; authenticated download only).
+model PatientDocument {
+  id           String    @id @default(cuid())
+  facilityId   String
+  patientId    String
+  encounterId  String?
+  /// medical_report | referral | lab_report | supporting | other
+  category     String    @default("other")
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  /// Relative key under STORAGE_ROOT — never a public URL.
+  storageKey   String
+  uploadedById String?
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+
+  facility  Facility   @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+
+  @@index([facilityId, patientId])
+  @@index([patientId, deletedAt])
+  @@index([encounterId])
+}
+
 model Appointment {
-  id        String   @id @default(cuid())
-  patientId String
-  doctorId  String
-  date      String
-  time      String
-  dept      String
-  reason    String?
-  status    String   @default("requested")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String   @id @default(cuid())
+  facilityId        String
+  /// Facility-scoped display reference (e.g. APT-001-000123).
+  appointmentNumber String?
+  patientId         String
+  doctorId          String
+  departmentId      String?
+  date              String
+  time              String
+  /// Derived or stored end (HH:MM).
+  endTime           String?
+  durationMinutes   Int      @default(30)
+  dept              String
+  /// general | follow_up | specialist | laboratory | other
+  type              String   @default("general")
+  /// reception | admin | patient_portal | walk_in | system
+  bookingSource     String   @default("reception")
+  reason            String?
+  /// scheduled | confirmed | checked_in | waiting | in_consultation | completed | cancelled | no_show | rescheduled | requested (legacy)
+  status            String   @default("scheduled")
+  createdById       String?
+  cancelledById     String?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  checkedInAt       DateTime?
+  rescheduledFromId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  patient Patient @relation(fields: [patientId], references: [id])
-  doctor  Staff   @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  facility     Facility                 @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  patient      Patient                  @relation(fields: [patientId], references: [id])
+  doctor       Staff                    @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  statusEvents AppointmentStatusEvent[]
+  queueEntries QueueEntry[]
 
+  @@unique([facilityId, appointmentNumber])
+  @@index([facilityId])
+  @@index([facilityId, date, status])
+  @@index([facilityId, doctorId, date])
   @@index([patientId])
   @@index([doctorId])
   @@index([doctorId, date, time])
   @@index([status])
+  @@index([facilityId, type])
+}
+
+model AppointmentNumberSequence {
+  id           String   @id @default(cuid())
+  facilityId   String   @unique
+  prefix       String   @default("APT")
+  facilityCode String   @default("001")
+  nextValue    Int      @default(1)
+  padWidth     Int      @default(6)
+  updatedAt    DateTime @updatedAt
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+}
+
+model AppointmentStatusEvent {
+  id            String   @id @default(cuid())
+  facilityId    String
+  appointmentId String
+  fromStatus    String?
+  toStatus      String
+  actorId       String?
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  facility    Facility    @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId, createdAt])
+  @@index([facilityId, createdAt])
+}
+
+/// Leave / break / temporary unavailability (all-day or time window).
+model ProviderUnavailability {
+  id         String   @id @default(cuid())
+  facilityId String
+  staffId    String
+  startDate  String
+  endDate    String
+  startTime  String?
+  endTime    String?
+  allDay     Boolean  @default(true)
+  reason     String?
+  createdById String?
+  createdAt  DateTime @default(now())
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId, staffId])
+  @@index([facilityId, startDate, endDate])
+}
+
+model QueueEntry {
+  id              String    @id @default(cuid())
+  facilityId      String
+  /// Daily department-scoped ticket e.g. Q-OPD-0007
+  queueNumber      String
+  patientId       String
+  appointmentId   String?
+  departmentKey   String
+  doctorId        String?
+  serviceDate     String
+  /// normal | urgent | follow_up (staff-assigned, not clinical triage AI)
+  priority        String    @default("normal")
+  /// waiting | called | in_service | completed | skipped | cancelled
+  status          String    @default("waiting")
+  arrivalTime     DateTime  @default(now())
+  calledAt        DateTime?
+  serviceStartedAt DateTime?
+  completedAt     DateTime?
+  skipReason      String?
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  facility    Facility     @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@unique([facilityId, departmentKey, serviceDate, queueNumber])
+  @@index([facilityId, serviceDate, status])
+  @@index([facilityId, departmentKey, serviceDate])
+  @@index([appointmentId])
+  @@index([patientId])
+}
+
+model QueueNumberSequence {
+  id            String   @id @default(cuid())
+  facilityId    String
+  departmentKey String
+  serviceDate   String
+  nextValue     Int      @default(1)
+  updatedAt     DateTime @updatedAt
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@unique([facilityId, departmentKey, serviceDate])
+}
+
+/// Async notification outbox (dev adapter logs; providers plug in later).
+model NotificationJob {
+  id         String    @id @default(cuid())
+  facilityId String
+  channel    String    @default("in_app")
+  template   String
+  payloadJson String
+  status     String    @default("queued") // queued | sent | failed | skipped
+  error      String?
+  createdAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId, status])
+  @@index([createdAt])
 }
 
 model Shift {
-  id        String   @id @default(cuid())
-  staffId   String
-  date      String
-  slot      String
-  dept      String
-  unit      String?
-  status    String   @default("draft")
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  facilityId String
+  staffId    String
+  date       String
+  slot       String
+  dept       String
+  unit       String?
+  status     String   @default("draft")
+  createdAt  DateTime @default(now())
 
-  staff Staff @relation(fields: [staffId], references: [id])
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  staff    Staff    @relation(fields: [staffId], references: [id])
 
+  @@index([facilityId])
+  @@index([facilityId, date, status])
   @@index([staffId])
   @@index([date])
   @@index([status])
@@ -136,6 +616,7 @@ model Shift {
 
 model Exchange {
   id          String   @id @default(cuid())
+  facilityId  String
   fromStaffId String
   toStaffId   String
   date        String
@@ -144,83 +625,111 @@ model Exchange {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  fromStaff Staff @relation("ExchangeFrom", fields: [fromStaffId], references: [id])
-  toStaff   Staff @relation("ExchangeTo", fields: [toStaffId], references: [id])
+  facility  Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  fromStaff Staff    @relation("ExchangeFrom", fields: [fromStaffId], references: [id])
+  toStaff   Staff    @relation("ExchangeTo", fields: [toStaffId], references: [id])
 
+  @@index([facilityId])
   @@index([fromStaffId])
   @@index([toStaffId])
   @@index([status])
 }
 
 model DoctorPublic {
-  id        String  @id @default(cuid())
-  doctorId  String  @unique
-  specialty String
-  onDuty    Boolean @default(false)
-  nextSlot  String?
-  rating    Float   @default(4.5)
+  id         String  @id @default(cuid())
+  facilityId String
+  doctorId   String  @unique
+  specialty  String
+  onDuty     Boolean @default(false)
+  nextSlot   String?
+  rating     Float   @default(4.5)
 
-  doctor Staff @relation(fields: [doctorId], references: [id])
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  doctor   Staff    @relation(fields: [doctorId], references: [id])
+
+  @@index([facilityId])
+  @@index([facilityId, specialty])
 }
 
 model DoctorSchedule {
-  id        String @id @default(cuid())
-  doctorId  String
-  specialty String
-  day       String
-  date      String
-  slotsJson String
-  room      String
-  status    String @default("open")
+  id         String @id @default(cuid())
+  facilityId String
+  doctorId   String
+  specialty  String
+  day        String
+  date       String
+  slotsJson  String
+  room       String
+  status     String @default("open")
 
-  doctor Staff @relation(fields: [doctorId], references: [id])
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  doctor   Staff    @relation(fields: [doctorId], references: [id])
 
+  @@index([facilityId])
+  @@index([facilityId, date])
   @@index([doctorId])
   @@index([doctorId, date])
   @@index([specialty])
 }
 
 model Notification {
-  id        String   @id @default(cuid())
-  userId    String?
-  role      String?
-  text      String
-  level     String   @default("info")
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  facilityId String?
+  userId     String?
+  role       String?
+  text       String
+  level      String   @default("info")
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
 
-  user User? @relation(fields: [userId], references: [id])
+  facility Facility? @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  user     User?     @relation(fields: [userId], references: [id])
 
+  @@index([facilityId])
   @@index([userId])
   @@index([role])
 }
 
 model ContactMessage {
-  id        String   @id @default(cuid())
-  name      String
-  email     String
-  topic     String
-  message   String
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  facilityId String?
+  name       String
+  email      String
+  topic      String
+  message    String
+  createdAt  DateTime @default(now())
+
+  facility Facility? @relation(fields: [facilityId], references: [id], onDelete: SetNull)
+
+  @@index([facilityId])
 }
 
 model BookingRequest {
   id         String   @id @default(cuid())
+  facilityId String?
   name       String
   department String
   date       String
   status     String   @default("requested")
   createdAt  DateTime @default(now())
+
+  facility Facility? @relation(fields: [facilityId], references: [id], onDelete: SetNull)
+
+  @@index([facilityId])
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  actorId   String?
-  action    String
-  entity    String?
-  metaJson  String?
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  facilityId String?
+  actorId    String?
+  action     String
+  entity     String?
+  metaJson   String?
+  createdAt  DateTime @default(now())
 
+  facility Facility? @relation(fields: [facilityId], references: [id], onDelete: SetNull)
+
+  @@index([facilityId, createdAt])
   @@index([createdAt])
   @@index([actorId])
 }

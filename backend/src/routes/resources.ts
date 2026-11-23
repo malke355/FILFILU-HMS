@@ -1,15 +1,23 @@
 import { Router } from "express";
 import { z } from "zod";
-import { assertActiveDoctor, assertSlotAvailable, assertSlotAvailableExcept } from "../lib/appointments.js";
+import { assertActiveDoctor, assertSlotAvailable, assertSlotAvailableExcept, BLOCKING_STATUSES } from "../lib/appointments.js";
 import { writeAudit } from "../lib/audit.js";
 import { hashPassword } from "../lib/auth.js";
 import { dateStringSchema, timeStringSchema } from "../lib/datetime.js";
 import { pageMeta, parsePage } from "../lib/pagination.js";
 import { prisma } from "../lib/prisma.js";
-import { can } from "../lib/rbac.js";
-import { ADMIN_CREATABLE_ROLES } from "../lib/roles.js";
+import { can, canAccessClinicalNotes } from "../lib/rbac.js";
+import { ADMIN_CREATABLE_ROLES, assertNotPlatformPrivilegeGrant, isPlatformRole } from "../lib/roles.js";
 import { bumpTokenVersionForStaff } from "../lib/session.js";
+import { revokeAllUserSessions } from "../lib/authSession.js";
+import {
+  assertSameFacilityPatient,
+  assertSameFacilityStaff,
+  requireFacilityId,
+} from "../lib/tenant.js";
 import { requireAuth, requirePermission, type AuthedRequest } from "../middleware/auth.js";
+import { allocateAppointmentNumber } from "../services/appointments/numbering.js";
+import { recordStatusEvent } from "../services/appointments/booking.js";
 
 const router = Router();
 
@@ -18,16 +26,18 @@ router.use(requireAuth);
 router.get("/staff", requirePermission("staff:read", "schedule:read_own"), async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
+    const facilityId = requireFacilityId(req);
     const { page, limit, skip } = parsePage(req);
     if (can(u.role, "staff:read")) {
+      const where = { facilityId };
       const [total, rows] = await Promise.all([
-        prisma.staff.count(),
-        prisma.staff.findMany({ orderBy: { name: "asc" }, skip, take: limit }),
+        prisma.staff.count({ where }),
+        prisma.staff.findMany({ where, orderBy: { name: "asc" }, skip, take: limit }),
       ]);
       return res.json({ data: rows, meta: pageMeta(total, page, limit) });
     }
     const rows = u.staffId
-      ? await prisma.staff.findMany({ where: { id: u.staffId } })
+      ? await prisma.staff.findMany({ where: { id: u.staffId, facilityId } })
       : [];
     res.json({ data: rows, meta: pageMeta(rows.length, 1, limit) });
   } catch (err) {
@@ -65,7 +75,14 @@ const createStaffAccountSchema = z
  */
 router.post("/staff/accounts", requirePermission("staff:write", "roles:assign"), async (req: AuthedRequest, res, next) => {
   try {
+    const facilityId = requireFacilityId(req);
+    // Reject mass-assignment of platform privileges from facility admins.
+    const raw = req.body as Record<string, unknown>;
+    if (raw?.platformRole || isPlatformRole(raw?.role) || isPlatformRole(String(raw?.platformRole || ""))) {
+      assertNotPlatformPrivilegeGrant(String(raw?.platformRole || raw?.role || "super_admin"));
+    }
     const body = createStaffAccountSchema.parse(req.body);
+    assertNotPlatformPrivilegeGrant(body.role);
     const email = body.email.toLowerCase();
     const exists = await prisma.user.findUnique({ where: { email } });
     if (exists) return res.status(409).json({ error: "An account with this email already exists." });
@@ -80,6 +97,7 @@ router.post("/staff/accounts", requirePermission("staff:write", "roles:assign"),
 
     const staff = await prisma.staff.create({
       data: {
+        facilityId,
         name,
         role: body.role,
         dept,
@@ -97,6 +115,7 @@ router.post("/staff/accounts", requirePermission("staff:write", "roles:assign"),
         name,
         role: body.role,
         title,
+        defaultFacilityId: facilityId,
         staffId: staff.id,
         patientId: null,
         ward,
@@ -104,8 +123,22 @@ router.post("/staff/accounts", requirePermission("staff:write", "roles:assign"),
       },
     });
 
+    await prisma.facilityMembership.create({
+      data: {
+        userId: user.id,
+        facilityId,
+        role: body.role,
+        status: "active",
+        staffId: staff.id,
+        title,
+        ward,
+        dept,
+      },
+    });
+
     await writeAudit({
       actorId: req.user!.sub,
+      facilityId,
       action: "staff.create_account",
       entity: staff.id,
       meta: { email, role: body.role, dept, ward },
@@ -123,6 +156,7 @@ router.post("/staff/accounts", requirePermission("staff:write", "roles:assign"),
           staffId: user.staffId,
           dept: user.dept,
           ward: user.ward,
+          facilityId,
         },
       },
     });
@@ -134,6 +168,7 @@ router.post("/staff/accounts", requirePermission("staff:write", "roles:assign"),
 /** Admin: update staff role/department/status (deactivate instead of delete). */
 router.patch("/staff/:id", requirePermission("staff:write"), async (req: AuthedRequest, res, next) => {
   try {
+    const facilityId = requireFacilityId(req);
     const id = String(req.params.id);
     const body = z.object({
       role: z.enum(ADMIN_CREATABLE_ROLES).optional(),
@@ -147,8 +182,12 @@ router.patch("/staff/:id", requirePermission("staff:write"), async (req: AuthedR
     if (req.user!.staffId && req.user!.staffId === id && body.status === "inactive") {
       return res.status(400).json({ error: "You cannot deactivate your own staff account." });
     }
+    if (req.user!.staffId && req.user!.staffId === id && body.role) {
+      return res.status(403).json({ error: "You cannot change your own role." });
+    }
+    if (body.role) assertNotPlatformPrivilegeGrant(body.role);
 
-    const existing = await prisma.staff.findUnique({ where: { id } });
+    const existing = await prisma.staff.findFirst({ where: { id, facilityId } });
     if (!existing) return res.status(404).json({ error: "Staff not found." });
 
     const row = await prisma.staff.update({
@@ -177,15 +216,45 @@ router.patch("/staff/:id", requirePermission("staff:write"), async (req: AuthedR
           ...(body.role ? { role: body.role } : {}),
           ...(body.dept ? { dept: body.dept } : {}),
           ...(body.ward !== undefined ? { ward: body.ward } : {}),
+          ...(body.status === "inactive" ? { status: "inactive" } : {}),
+          ...(body.status === "active" ? { status: "active" } : {}),
           ...(claimChanged ? { tokenVersion: { increment: 1 } } : {}),
         },
       });
+      if (body.status === "inactive") {
+        const linked = await prisma.user.findFirst({ where: { staffId: id }, select: { id: true } });
+        if (linked) await revokeAllUserSessions(linked.id);
+      }
     } else if (body.status) {
-      await bumpTokenVersionForStaff(id);
+      await prisma.user.updateMany({
+        where: { staffId: id },
+        data: {
+          status: body.status === "inactive" ? "inactive" : "active",
+          tokenVersion: { increment: 1 },
+        },
+      });
+      if (body.status === "inactive") {
+        const linked = await prisma.user.findFirst({ where: { staffId: id }, select: { id: true } });
+        if (linked) await revokeAllUserSessions(linked.id);
+      } else {
+        await bumpTokenVersionForStaff(id);
+      }
     }
+
+    await prisma.facilityMembership.updateMany({
+      where: { staffId: id, facilityId },
+      data: {
+        ...(body.role ? { role: body.role } : {}),
+        ...(body.dept ? { dept: body.dept } : {}),
+        ...(body.ward !== undefined ? { ward: body.ward } : {}),
+        ...(body.status === "inactive" ? { status: "suspended" } : {}),
+        ...(body.status === "active" ? { status: "active" } : {}),
+      },
+    });
 
     await writeAudit({
       actorId: req.user!.sub,
+      facilityId,
       action: body.status === "inactive" ? "staff.deactivate" : body.status === "active" ? "staff.reactivate" : "staff.update",
       entity: row.id,
       meta: { role: body.role, status: body.status, dept: body.dept, ward: body.ward },
@@ -196,47 +265,120 @@ router.patch("/staff/:id", requirePermission("staff:write"), async (req: AuthedR
   }
 });
 
-router.get("/patients", async (req: AuthedRequest, res, next) => {
+/** Clinical notes — list/register live in routes/patients.ts (Section 4). */
+router.get("/patients/:id/clinical", async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
-    let where = {};
-    if (can(u.role, "patients:read_all")) where = {};
-    else if (can(u.role, "patients:read_assigned")) where = { doctorId: u.staffId ?? "__none__" };
-    else if (can(u.role, "patients:read_ward")) where = { ward: u.ward ?? "__none__" };
-    else if (can(u.role, "profile:read_own")) where = { id: u.patientId ?? "__none__" };
-    else return res.status(403).json({ error: "Missing permission." });
+    const facilityId = requireFacilityId(req);
+    if (!canAccessClinicalNotes(u.role)) {
+      return res.status(403).json({ error: "Clinical notes are restricted for your role." });
+    }
+    const id = String(req.params.id);
+    const patient = await prisma.patient.findFirst({ where: { id, facilityId } });
+    if (!patient) return res.status(404).json({ error: "Patient not found." });
 
-    const { page, limit, skip } = parsePage(req);
-    const [total, rows] = await Promise.all([
-      prisma.patient.count({ where }),
-      prisma.patient.findMany({
-        where,
-        include: { doctor: { select: { id: true, name: true } } },
-        orderBy: { name: "asc" },
-        skip,
-        take: limit,
-      }),
-    ]);
-    res.json({ data: rows, meta: pageMeta(total, page, limit) });
+    // Scope: doctors assigned; nurses ward; admins all clinical.
+    if (can(u.role, "patients:read_assigned") && patient.doctorId !== u.staffId && !can(u.role, "patients:read_all")) {
+      return res.status(403).json({ error: "Not assigned to this patient." });
+    }
+    if (can(u.role, "patients:read_ward") && !can(u.role, "patients:read_all") && patient.ward !== u.ward) {
+      return res.status(403).json({ error: "Patient is outside your ward." });
+    }
+
+    await writeAudit({
+      actorId: u.sub,
+      facilityId,
+      action: "patients.clinical_access",
+      entity: id,
+      meta: { role: u.role },
+      req,
+    });
+    res.json({
+      data: {
+        patientId: patient.id,
+        condition: patient.condition,
+      },
+    });
   } catch (err) {
     next(err);
   }
 });
 
+/** Activate / deactivate a facility user (admin). Cannot target self or grant platform roles. */
+router.patch(
+  "/users/:userId/status",
+  requirePermission("users.manage", "staff:write"),
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const facilityId = requireFacilityId(req);
+      const userId = String(req.params.userId);
+      const body = z.object({ status: z.enum(["active", "inactive"]) }).parse(req.body);
+      if (userId === req.user!.sub) {
+        return res.status(400).json({ error: "You cannot change your own account status." });
+      }
+      const membership = await prisma.facilityMembership.findFirst({
+        where: { userId, facilityId },
+      });
+      if (!membership) return res.status(404).json({ error: "User is not a member of this facility." });
+
+      const target = await prisma.user.findUnique({ where: { id: userId } });
+      if (!target) return res.status(404).json({ error: "User not found." });
+      if (target.platformRole) {
+        return res.status(403).json({ error: "Facility administrators cannot modify platform accounts." });
+      }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { status: body.status, tokenVersion: { increment: 1 } },
+      });
+      if (body.status === "inactive") {
+        await revokeAllUserSessions(userId);
+        await prisma.facilityMembership.updateMany({
+          where: { userId, facilityId },
+          data: { status: "suspended" },
+        });
+      } else {
+        await prisma.facilityMembership.updateMany({
+          where: { userId, facilityId },
+          data: { status: "active" },
+        });
+      }
+
+      await writeAudit({
+        actorId: req.user!.sub,
+        facilityId,
+        action: body.status === "inactive" ? "user.deactivate" : "user.activate",
+        entity: userId,
+        req,
+      });
+      res.json({ ok: true, userId, status: body.status });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 router.get("/appointments", async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
-    let where = {};
-    if (can(u.role, "appointments:read_all")) where = {};
-    else if (u.role === "doctor") where = { doctorId: u.staffId ?? "__none__" };
-    else if (u.role === "nurse") {
+    const facilityId = requireFacilityId(req);
+    let where: Record<string, unknown> = { facilityId };
+    if (can(u.role, "appointments:read_all") || can(u.role, "appointments.manage")) {
+      where = { facilityId };
+    } else if (u.role === "doctor") {
+      where = { facilityId, doctorId: u.staffId ?? "__none__" };
+    } else if (u.role === "nurse") {
       const wardPatients = await prisma.patient.findMany({
-        where: { ward: u.ward ?? "__none__" },
+        where: { facilityId, ward: u.ward ?? "__none__" },
         select: { id: true },
       });
-      where = { patientId: { in: wardPatients.map((p) => p.id) } };
-    } else if (u.role === "patient") where = { patientId: u.patientId ?? "__none__" };
-    else return res.status(403).json({ error: "Missing permission." });
+      where = { facilityId, patientId: { in: wardPatients.map((p) => p.id) } };
+    } else if (u.role === "patient") {
+      where = { facilityId, patientId: u.patientId ?? "__none__" };
+    } else if (can(u.role, "appointments.read") || can(u.role, "billing.read")) {
+      // Receptionist / cashier: facility appointment list without clinical ownership filters.
+      where = { facilityId };
+    } else return res.status(403).json({ error: "Missing permission." });
 
     const { page, limit, skip } = parsePage(req);
     const [total, rows] = await Promise.all([
@@ -261,6 +403,7 @@ router.get("/appointments", async (req: AuthedRequest, res, next) => {
 router.post("/appointments", async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
+    const facilityId = requireFacilityId(req);
     if (!can(u.role, "appointments:request") && !can(u.role, "appointments:manage") && !can(u.role, "appointments:write_own")) {
       return res.status(403).json({ error: "Missing permission." });
     }
@@ -271,22 +414,30 @@ router.post("/appointments", async (req: AuthedRequest, res, next) => {
       time: timeStringSchema,
       dept: z.string().min(1).max(120),
       reason: z.string().max(500).optional(),
+      facilityId: z.string().optional(),
     }).parse(req.body);
 
     const patientId = u.role === "patient" ? u.patientId : body.patientId;
     if (!patientId) return res.status(400).json({ error: "patientId required." });
 
+    await assertSameFacilityPatient(facilityId, patientId);
+    await assertSameFacilityStaff(facilityId, body.doctorId);
     await assertActiveDoctor(body.doctorId);
+    const appointmentNumber = await allocateAppointmentNumber(facilityId);
+    const status = u.role === "patient" ? "requested" : "confirmed";
     // Slot check + create in one transaction; DB partial unique index also blocks races (P2002 → 409).
     const row = await prisma.$transaction(async (tx) => {
-      const time = await assertSlotAvailable(body.doctorId, body.date, body.time);
-      // Re-check inside the transaction against the same connection snapshot.
+      const slot = await assertSlotAvailable(body.doctorId, body.date, body.time, {
+        facilityId,
+        durationMinutes: 30,
+      });
       const conflict = await tx.appointment.findFirst({
         where: {
+          facilityId,
           doctorId: body.doctorId,
           date: body.date,
-          time,
-          status: { in: ["requested", "confirmed"] },
+          time: slot.time,
+          status: { in: [...BLOCKING_STATUSES] },
         },
         select: { id: true },
       });
@@ -297,17 +448,31 @@ router.post("/appointments", async (req: AuthedRequest, res, next) => {
       }
       return tx.appointment.create({
         data: {
+          facilityId,
+          appointmentNumber,
           patientId,
           doctorId: body.doctorId,
           date: body.date,
-          time,
+          time: slot.time,
+          endTime: slot.endTime,
+          durationMinutes: slot.durationMinutes,
           dept: body.dept,
           reason: body.reason,
-          status: u.role === "patient" ? "requested" : "confirmed",
+          status,
+          type: "general",
+          bookingSource: u.role === "patient" ? "patient_portal" : "reception",
+          createdById: u.sub,
         },
       });
     });
-    await writeAudit({ actorId: u.sub, action: "appointment.create", entity: row.id });
+    await recordStatusEvent({
+      facilityId,
+      appointmentId: row.id,
+      fromStatus: null,
+      toStatus: status,
+      actorId: u.sub,
+    });
+    await writeAudit({ actorId: u.sub, facilityId, action: "appointment.create", entity: row.id });
     res.status(201).json({ data: row });
   } catch (err) {
     next(err);
@@ -317,13 +482,12 @@ router.post("/appointments", async (req: AuthedRequest, res, next) => {
 router.get("/shifts", async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
-    let where: Record<string, unknown> = {};
+    const facilityId = requireFacilityId(req);
+    let where: Record<string, unknown> = { facilityId };
     if (can(u.role, "schedule:read") || can(u.role, "schedule:write")) {
-      // Admin / schedulers see drafts + published.
-      where = {};
+      where = { facilityId };
     } else if (can(u.role, "schedule:read_own")) {
-      // Doctors/nurses only see their own published roster (drafts stay hidden).
-      where = { staffId: u.staffId ?? "__none__", status: "published" };
+      where = { facilityId, staffId: u.staffId ?? "__none__", status: "published" };
     } else {
       return res.status(403).json({ error: "Missing permission." });
     }
@@ -347,12 +511,15 @@ router.get("/shifts", async (req: AuthedRequest, res, next) => {
 
 router.patch("/shifts/:id/publish", requirePermission("schedule:publish"), async (req: AuthedRequest, res, next) => {
   try {
+    const facilityId = requireFacilityId(req);
     const id = String(req.params.id);
+    const existing = await prisma.shift.findFirst({ where: { id, facilityId } });
+    if (!existing) return res.status(404).json({ error: "Shift not found." });
     const row = await prisma.shift.update({
       where: { id },
       data: { status: "published" },
     });
-    await writeAudit({ actorId: req.user!.sub, action: "shift.publish", entity: row.id });
+    await writeAudit({ actorId: req.user!.sub, facilityId, action: "shift.publish", entity: row.id });
     res.json({ data: row });
   } catch (err) {
     next(err);
@@ -362,10 +529,12 @@ router.patch("/shifts/:id/publish", requirePermission("schedule:publish"), async
 router.get("/exchanges", async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
-    let where = {};
-    if (can(u.role, "exchanges:approve")) where = {};
+    const facilityId = requireFacilityId(req);
+    let where: Record<string, unknown> = { facilityId };
+    if (can(u.role, "exchanges:approve")) where = { facilityId };
     else if (can(u.role, "exchanges:request")) {
       where = {
+        facilityId,
         OR: [{ fromStaffId: u.staffId ?? "__none__" }, { toStaffId: u.staffId ?? "__none__" }],
       };
     } else return res.status(403).json({ error: "Missing permission." });
@@ -393,6 +562,7 @@ router.get("/exchanges", async (req: AuthedRequest, res, next) => {
 router.post("/exchanges", requirePermission("exchanges:request"), async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
+    const facilityId = requireFacilityId(req);
     if (!u.staffId) return res.status(400).json({ error: "Staff profile required." });
     const body = z.object({
       toStaffId: z.string().min(1),
@@ -403,8 +573,8 @@ router.post("/exchanges", requirePermission("exchanges:request"), async (req: Au
       return res.status(400).json({ error: "Cannot request a swap with yourself." });
     }
     const [fromStaff, toStaff] = await Promise.all([
-      prisma.staff.findUnique({ where: { id: u.staffId } }),
-      prisma.staff.findUnique({ where: { id: body.toStaffId } }),
+      prisma.staff.findFirst({ where: { id: u.staffId, facilityId } }),
+      prisma.staff.findFirst({ where: { id: body.toStaffId, facilityId } }),
     ]);
     if (!toStaff || toStaff.status !== "active") {
       return res.status(400).json({ error: "Colleague not found or inactive." });
@@ -417,6 +587,7 @@ router.post("/exchanges", requirePermission("exchanges:request"), async (req: Au
     }
     const row = await prisma.exchange.create({
       data: {
+        facilityId,
         fromStaffId: u.staffId,
         toStaffId: body.toStaffId,
         date: body.date,
@@ -426,6 +597,7 @@ router.post("/exchanges", requirePermission("exchanges:request"), async (req: Au
     });
     await writeAudit({
       actorId: u.sub,
+      facilityId,
       action: "exchange.create",
       entity: row.id,
       meta: { toStaffId: body.toStaffId, date: body.date, reason: body.reason },
@@ -438,12 +610,13 @@ router.post("/exchanges", requirePermission("exchanges:request"), async (req: Au
 
 router.patch("/exchanges/:id", requirePermission("exchanges:approve", "exchanges:request"), async (req: AuthedRequest, res, next) => {
   try {
+    const facilityId = requireFacilityId(req);
     const body = z.object({
       status: z.enum(["pending_peer", "peer_accepted", "pending_admin", "approved", "denied"]),
     }).parse(req.body);
     const u = req.user!;
     const id = String(req.params.id);
-    const existing = await prisma.exchange.findUnique({ where: { id } });
+    const existing = await prisma.exchange.findFirst({ where: { id, facilityId } });
     if (!existing) return res.status(404).json({ error: "Exchange not found." });
 
     const isAdmin = can(u.role, "exchanges:approve");
@@ -483,6 +656,7 @@ router.patch("/exchanges/:id", requirePermission("exchanges:approve", "exchanges
     });
     await writeAudit({
       actorId: u.sub,
+      facilityId,
       action: "exchange.update",
       entity: row.id,
       meta: { status: nextStatus },
@@ -495,17 +669,19 @@ router.patch("/exchanges/:id", requirePermission("exchanges:approve", "exchanges
 
 router.post("/exchanges/approve-pending", requirePermission("exchanges:approve"), async (req: AuthedRequest, res, next) => {
   try {
+    const facilityId = requireFacilityId(req);
     const pending = await prisma.exchange.findMany({
-      where: { status: { in: ["pending_peer", "peer_accepted", "pending_admin"] } },
+      where: { facilityId, status: { in: ["pending_peer", "peer_accepted", "pending_admin"] } },
     });
     const ids = pending.map((e) => e.id);
     if (ids.length) {
       await prisma.exchange.updateMany({
-        where: { id: { in: ids } },
+        where: { id: { in: ids }, facilityId },
         data: { status: "approved" },
       });
       await writeAudit({
         actorId: req.user!.sub,
+        facilityId,
         action: "exchange.approve_pending",
         meta: { count: ids.length },
       });
@@ -518,12 +694,14 @@ router.post("/exchanges/approve-pending", requirePermission("exchanges:approve")
 
 router.post("/shifts/publish-drafts", requirePermission("schedule:publish"), async (req: AuthedRequest, res, next) => {
   try {
+    const facilityId = requireFacilityId(req);
     const result = await prisma.shift.updateMany({
-      where: { status: "draft" },
+      where: { facilityId, status: "draft" },
       data: { status: "published" },
     });
     await writeAudit({
       actorId: req.user!.sub,
+      facilityId,
       action: "shift.publish_drafts",
       meta: { count: result.count },
     });
@@ -536,9 +714,24 @@ router.post("/shifts/publish-drafts", requirePermission("schedule:publish"), asy
 router.patch("/appointments/:id", async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
+    const facilityId = requireFacilityId(req);
     const id = String(req.params.id);
     const body = z.object({
-      status: z.enum(["draft", "requested", "confirmed", "cancelled", "completed", "no_show"]).optional(),
+      status: z
+        .enum([
+          "draft",
+          "requested",
+          "scheduled",
+          "confirmed",
+          "checked_in",
+          "waiting",
+          "in_consultation",
+          "cancelled",
+          "completed",
+          "no_show",
+          "rescheduled",
+        ])
+        .optional(),
       date: dateStringSchema.optional(),
       time: timeStringSchema.optional(),
       reason: z.string().max(500).optional(),
@@ -546,10 +739,10 @@ router.patch("/appointments/:id", async (req: AuthedRequest, res, next) => {
       dept: z.string().min(1).max(120).optional(),
     }).parse(req.body);
 
-    const existing = await prisma.appointment.findUnique({ where: { id } });
+    const existing = await prisma.appointment.findFirst({ where: { id, facilityId } });
     if (!existing) return res.status(404).json({ error: "Appointment not found." });
 
-    const isAdminOps = can(u.role, "appointments:manage");
+    const isAdminOps = can(u.role, "appointments:manage") || can(u.role, "appointments.manage");
     const isDoctorOwner = u.role === "doctor" && existing.doctorId === u.staffId;
     const isPatientCancel =
       u.role === "patient" &&
@@ -562,13 +755,19 @@ router.patch("/appointments/:id", async (req: AuthedRequest, res, next) => {
     if (!allowed) return res.status(403).json({ error: "Missing permission." });
 
     // Admins run the system: cancel / reassign only — not clinical confirm/complete/no-show.
-    if (isAdminOps && !isDoctorOwner && body.status && !["cancelled", "draft"].includes(body.status)) {
+    if (
+      isAdminOps &&
+      !isDoctorOwner &&
+      body.status &&
+      !["cancelled", "draft", "scheduled", "confirmed"].includes(body.status)
+    ) {
       return res.status(403).json({
         error: "Admins cannot change clinical appointment status. Cancel or reassign instead.",
       });
     }
 
     if (body.doctorId && isAdminOps) {
+      await assertSameFacilityStaff(facilityId, body.doctorId);
       await assertActiveDoctor(body.doctorId);
     }
 
@@ -576,12 +775,19 @@ router.patch("/appointments/:id", async (req: AuthedRequest, res, next) => {
     const nextDate = body.date || existing.date;
     const nextTime = body.time || existing.time;
     const slotChanging = Boolean(body.doctorId || body.date || body.time);
-    const staysBlocking =
-      (body.status ?? existing.status) === "requested" ||
-      (body.status ?? existing.status) === "confirmed";
+    const nextStatus = body.status ?? existing.status;
+    const staysBlocking = (BLOCKING_STATUSES as readonly string[]).includes(nextStatus);
     let normalizedTime = nextTime;
+    let endTime = existing.endTime;
+    let durationMinutes = existing.durationMinutes || 30;
     if (slotChanging && staysBlocking) {
-      normalizedTime = await assertSlotAvailableExcept(nextDoctorId, nextDate, nextTime, id);
+      const slot = await assertSlotAvailableExcept(nextDoctorId, nextDate, nextTime, id, {
+        facilityId,
+        durationMinutes,
+      });
+      normalizedTime = slot.time;
+      endTime = slot.endTime;
+      durationMinutes = slot.durationMinutes;
     }
 
     const row = await prisma.appointment.update({
@@ -589,14 +795,32 @@ router.patch("/appointments/:id", async (req: AuthedRequest, res, next) => {
       data: {
         ...(body.status ? { status: body.status } : {}),
         ...(body.date ? { date: body.date } : {}),
-        ...(slotChanging ? { time: normalizedTime } : body.time ? { time: body.time } : {}),
+        ...(slotChanging
+          ? { time: normalizedTime, endTime, durationMinutes }
+          : body.time
+            ? { time: body.time }
+            : {}),
         ...(body.reason !== undefined ? { reason: body.reason } : {}),
         ...(body.doctorId ? { doctorId: body.doctorId } : {}),
         ...(body.dept ? { dept: body.dept } : {}),
+        ...(body.status === "cancelled"
+          ? { cancelledAt: new Date(), cancelledById: u.sub, cancelReason: body.reason || null }
+          : {}),
       },
     });
+    if (body.status && body.status !== existing.status) {
+      await recordStatusEvent({
+        facilityId,
+        appointmentId: id,
+        fromStatus: existing.status,
+        toStatus: body.status,
+        actorId: u.sub,
+        reason: body.reason,
+      });
+    }
     await writeAudit({
       actorId: u.sub,
+      facilityId,
       action: "appointment.update",
       entity: row.id,
       meta: { status: body.status, doctorId: body.doctorId, date: body.date, time: body.time },
@@ -613,8 +837,9 @@ router.patch("/appointments/:id", async (req: AuthedRequest, res, next) => {
  */
 router.post("/appointments/cleanup-duplicates", requirePermission("appointments:manage"), async (req: AuthedRequest, res, next) => {
   try {
+    const facilityId = requireFacilityId(req);
     const rows = await prisma.appointment.findMany({
-      where: { status: { in: ["requested", "confirmed"] } },
+      where: { facilityId, status: { in: ["requested", "confirmed"] } },
       orderBy: { createdAt: "asc" },
     });
     const seen = new Map<string, string>();
@@ -626,11 +851,12 @@ router.post("/appointments/cleanup-duplicates", requirePermission("appointments:
     }
     if (cancelIds.length) {
       await prisma.appointment.updateMany({
-        where: { id: { in: cancelIds } },
+        where: { id: { in: cancelIds }, facilityId },
         data: { status: "cancelled" },
       });
       await writeAudit({
         actorId: req.user!.sub,
+        facilityId,
         action: "appointment.cleanup_duplicates",
         meta: { cancelled: cancelIds.length },
       });
@@ -644,8 +870,11 @@ router.post("/appointments/cleanup-duplicates", requirePermission("appointments:
 router.get("/activity", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
+    const facilityId = requireFacilityId(req);
     const rows = await prisma.auditLog.findMany({
-      where: can(u.role, "reports:read") ? undefined : { actorId: u.sub },
+      where: can(u.role, "reports:read")
+        ? { facilityId }
+        : { facilityId, actorId: u.sub },
       orderBy: { createdAt: "desc" },
       take: 20,
     });
@@ -666,8 +895,10 @@ router.get("/activity", requireAuth, async (req: AuthedRequest, res, next) => {
 router.get("/notifications", requirePermission("notifications:read_own"), async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
+    const facilityId = requireFacilityId(req);
     const rows = await prisma.notification.findMany({
       where: {
+        facilityId,
         OR: [{ userId: u.sub }, { role: u.role }],
       },
       orderBy: { createdAt: "desc" },
@@ -679,14 +910,15 @@ router.get("/notifications", requirePermission("notifications:read_own"), async 
   }
 });
 
-router.get("/reports/summary", requirePermission("reports:read"), async (_req, res, next) => {
+router.get("/reports/summary", requirePermission("reports:read"), async (req: AuthedRequest, res, next) => {
   try {
+    const facilityId = requireFacilityId(req);
     const [staff, publishedShifts, openAppointments, pendingExchanges, patients] = await Promise.all([
-      prisma.staff.count({ where: { status: "active" } }),
-      prisma.shift.count({ where: { status: "published" } }),
-      prisma.appointment.count({ where: { status: { not: "draft" } } }),
-      prisma.exchange.count({ where: { status: { not: "approved" } } }),
-      prisma.patient.count(),
+      prisma.staff.count({ where: { facilityId, status: "active" } }),
+      prisma.shift.count({ where: { facilityId, status: "published" } }),
+      prisma.appointment.count({ where: { facilityId, status: { not: "draft" } } }),
+      prisma.exchange.count({ where: { facilityId, status: { not: "approved" } } }),
+      prisma.patient.count({ where: { facilityId } }),
     ]);
     res.json({
       data: {
@@ -705,12 +937,13 @@ router.get("/reports/summary", requirePermission("reports:read"), async (_req, r
 router.get("/dashboard/stats", async (req: AuthedRequest, res, next) => {
   try {
     const u = req.user!;
+    const facilityId = requireFacilityId(req);
     if (u.role === "admin") {
       const [activeStaff, publishedShifts, openAppointments, pendingExchanges] = await Promise.all([
-        prisma.staff.count({ where: { status: "active" } }),
-        prisma.shift.count({ where: { status: "published" } }),
-        prisma.appointment.count({ where: { status: { not: "draft" } } }),
-        prisma.exchange.count({ where: { status: { not: "approved" } } }),
+        prisma.staff.count({ where: { facilityId, status: "active" } }),
+        prisma.shift.count({ where: { facilityId, status: "published" } }),
+        prisma.appointment.count({ where: { facilityId, status: { not: "draft" } } }),
+        prisma.exchange.count({ where: { facilityId, status: { not: "approved" } } }),
       ]);
       return res.json({
         data: [
@@ -724,10 +957,10 @@ router.get("/dashboard/stats", async (req: AuthedRequest, res, next) => {
 
     if (u.role === "doctor") {
       const [patients, shifts, confirmed, notes] = await Promise.all([
-        prisma.patient.count({ where: { doctorId: u.staffId ?? "__none__" } }),
-        prisma.shift.count({ where: { staffId: u.staffId ?? "__none__" } }),
-        prisma.appointment.count({ where: { doctorId: u.staffId ?? "__none__", status: "confirmed" } }),
-        prisma.notification.count({ where: { OR: [{ userId: u.sub }, { role: "doctor" }] } }),
+        prisma.patient.count({ where: { facilityId, doctorId: u.staffId ?? "__none__" } }),
+        prisma.shift.count({ where: { facilityId, staffId: u.staffId ?? "__none__" } }),
+        prisma.appointment.count({ where: { facilityId, doctorId: u.staffId ?? "__none__", status: "confirmed" } }),
+        prisma.notification.count({ where: { facilityId, OR: [{ userId: u.sub }, { role: "doctor" }] } }),
       ]);
       return res.json({
         data: [
@@ -741,12 +974,12 @@ router.get("/dashboard/stats", async (req: AuthedRequest, res, next) => {
 
     if (u.role === "nurse") {
       const [patients, shifts, appts, notes] = await Promise.all([
-        prisma.patient.count({ where: { ward: u.ward ?? "__none__" } }),
-        prisma.shift.count({ where: { staffId: u.staffId ?? "__none__" } }),
+        prisma.patient.count({ where: { facilityId, ward: u.ward ?? "__none__" } }),
+        prisma.shift.count({ where: { facilityId, staffId: u.staffId ?? "__none__" } }),
         prisma.appointment.count({
-          where: { patient: { ward: u.ward ?? "__none__" } },
+          where: { facilityId, patient: { ward: u.ward ?? "__none__" } },
         }),
-        prisma.notification.count({ where: { OR: [{ userId: u.sub }, { role: "nurse" }] } }),
+        prisma.notification.count({ where: { facilityId, OR: [{ userId: u.sub }, { role: "nurse" }] } }),
       ]);
       return res.json({
         data: [
@@ -759,12 +992,12 @@ router.get("/dashboard/stats", async (req: AuthedRequest, res, next) => {
     }
 
     const [visits, confirmed, requested, specialties] = await Promise.all([
-      prisma.appointment.count({ where: { patientId: u.patientId ?? "__none__" } }),
-      prisma.appointment.count({ where: { patientId: u.patientId ?? "__none__", status: "confirmed" } }),
-      prisma.appointment.count({ where: { patientId: u.patientId ?? "__none__", status: "requested" } }),
-      prisma.doctorSchedule.findMany({ select: { specialty: true }, distinct: ["specialty"] }),
+      prisma.appointment.count({ where: { facilityId, patientId: u.patientId ?? "__none__" } }),
+      prisma.appointment.count({ where: { facilityId, patientId: u.patientId ?? "__none__", status: "confirmed" } }),
+      prisma.appointment.count({ where: { facilityId, patientId: u.patientId ?? "__none__", status: "requested" } }),
+      prisma.doctorSchedule.findMany({ where: { facilityId }, select: { specialty: true }, distinct: ["specialty"] }),
     ]);
-    const openSlots = await prisma.doctorSchedule.findMany({ where: { status: { not: "full" } } });
+    const openSlots = await prisma.doctorSchedule.findMany({ where: { facilityId, status: { not: "full" } } });
     const slotCount = openSlots.reduce((n, s) => n + (JSON.parse(s.slotsJson) as string[]).length, 0);
     res.json({
       data: [

@@ -1,0 +1,158 @@
+openapi: 3.0.3
+info:
+  title: Filfilu Auth & Security API
+  version: "3.0.0"
+  description: |
+    Section 3 authentication and authorization endpoints.
+    Browser clients use HttpOnly cookies (`filfilu_token` access JWT, `filfilu_refresh` opaque refresh).
+    Do not store tokens in localStorage.
+servers:
+  - url: http://127.0.0.1:8080/api
+paths:
+  /auth/login:
+    post:
+      summary: Login with email and password
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                role: { type: string, description: Optional role check against active membership }
+      responses:
+        "200":
+          description: Sets access + refresh cookies; returns user profile
+        "401":
+          description: Invalid credentials
+        "403":
+          description: Inactive account or role mismatch
+  /auth/signup:
+    post:
+      summary: Patient self-registration
+      tags: [Auth]
+      responses:
+        "201": { description: Patient created and signed in }
+        "403": { description: Non-patient self-registration rejected }
+  /auth/logout:
+    post:
+      summary: Logout current session (revokes refresh cookie)
+      tags: [Auth]
+      responses:
+        "200": { description: Cookies cleared }
+  /auth/logout-all:
+    post:
+      summary: Revoke all refresh sessions and bump tokenVersion
+      tags: [Auth]
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: All sessions revoked }
+  /auth/refresh:
+    post:
+      summary: Rotate refresh token and issue new access JWT
+      tags: [Auth]
+      responses:
+        "200": { description: New cookies set }
+        "401": { description: Missing, expired, or reused refresh token }
+  /auth/change-password:
+    post:
+      summary: Change password (revokes all sessions)
+      tags: [Auth]
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 6 }
+      responses:
+        "200": { description: Password updated; re-login required }
+  /auth/forgot-password:
+    post:
+      summary: Request password reset email (no enumeration)
+      tags: [Auth]
+      responses:
+        "200": { description: Always generic success message }
+  /auth/reset-password:
+    post:
+      summary: Reset password with one-time token
+      tags: [Auth]
+      responses:
+        "200": { description: Password updated }
+        "400": { description: Invalid or expired token }
+  /auth/me:
+    get:
+      summary: Current user profile and permissions
+      tags: [Auth]
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: User + facilities + permissions }
+        "401": { description: Missing/invalid session }
+  /auth/facilities:
+    get:
+      summary: List facilities for the authenticated user
+      tags: [Auth]
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: facilities[] and activeFacilityId }
+  /auth/switch-facility:
+    post:
+      summary: Switch active facility (membership validated server-side)
+      tags: [Auth]
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [facilityId]
+              properties:
+                facilityId: { type: string }
+      responses:
+        "200": { description: New session cookies for target facility }
+        "403": { description: Not a member of that facility }
+  /users/{userId}/status:
+    patch:
+      summary: Activate or deactivate a facility user
+      tags: [Users]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [active, inactive] }
+      responses:
+        "200": { description: Status updated }
+        "403": { description: Platform account or self-target }
+  /patients/{id}/clinical:
+    get:
+      summary: Access clinical notes (audited)
+      tags: [Clinical]
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Clinical payload }
+        "403": { description: Role lacks clinical permission }
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: filfilu_token

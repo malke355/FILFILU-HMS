@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma.js";
 import { can } from "../lib/rbac.js";
 import type { Role } from "../lib/roles.js";
 import { SESSION_COOKIE } from "../lib/sessionCookie.js";
+import { resolveFacilityContext } from "../lib/tenant.js";
 
 export type AuthedRequest = Request & { user?: JwtPayload };
 
@@ -16,7 +17,7 @@ function tokenFromRequest(req: Request): string | null {
 
 export { tokenFromRequest };
 
-async function loadValidSession(token: string): Promise<JwtPayload | null> {
+async function loadValidSession(req: Request, token: string): Promise<JwtPayload | null> {
   let payload: JwtPayload;
   try {
     payload = verifyToken(token);
@@ -31,31 +32,62 @@ async function loadValidSession(token: string): Promise<JwtPayload | null> {
       email: true,
       name: true,
       role: true,
+      platformRole: true,
+      status: true,
       title: true,
       staffId: true,
       patientId: true,
       ward: true,
       dept: true,
       tokenVersion: true,
-      staff: { select: { status: true } },
+      defaultFacilityId: true,
+      staff: { select: { status: true, facilityId: true } },
     },
   });
 
   if (!user) return null;
+  if (user.status && user.status !== "active") return null;
   if ((payload.tv ?? -1) !== user.tokenVersion) return null;
   if (user.staff && user.staff.status === "inactive") return null;
+
+  const headerFacility = String(req.headers["x-facility-id"] || "").trim() || null;
+
+  const ctx = await resolveFacilityContext(user.id, {
+    requestedFacilityId: headerFacility || payload.facilityId,
+    defaultFacilityId: user.defaultFacilityId,
+    platformRole: user.platformRole,
+    jwtFacilityId: payload.facilityId,
+  });
+
+  if (!ctx) return null;
+
+  // Client must not jump to a facility they do not belong to.
+  if (headerFacility && headerFacility !== ctx.facilityId && user.platformRole !== "super_admin") {
+    return null;
+  }
+
+  const membershipStaffId = ctx.membership?.staffId ?? null;
+  const staffId =
+    membershipStaffId ||
+    (user.staff?.facilityId === ctx.facilityId ? user.staffId : null) ||
+    null;
+
+  // Patient portal link is global on User; still valid within their membership facility.
+  const patientId = ctx.role === "patient" ? user.patientId : user.patientId;
 
   return {
     sub: user.id,
     email: user.email,
-    role: user.role as Role,
+    role: ctx.role,
     name: user.name,
     tv: user.tokenVersion,
-    staffId: user.staffId,
-    patientId: user.patientId,
-    ward: user.ward,
-    dept: user.dept,
-    title: user.title,
+    facilityId: ctx.facilityId,
+    platformRole: user.platformRole,
+    staffId,
+    patientId,
+    ward: ctx.membership?.ward ?? user.ward,
+    dept: ctx.membership?.dept ?? user.dept,
+    title: ctx.membership?.title ?? user.title,
   };
 }
 
@@ -64,10 +96,13 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
   if (!token) {
     return res.status(401).json({ error: "Authentication required." });
   }
-  loadValidSession(token)
+  loadValidSession(req, token)
     .then((user) => {
       if (!user) {
         return res.status(401).json({ error: "Invalid or expired session. Please sign in again." });
+      }
+      if (!user.facilityId) {
+        return res.status(403).json({ error: "No active facility membership." });
       }
       req.user = user;
       return next();
@@ -78,7 +113,7 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
 export function optionalAuth(req: AuthedRequest, _res: Response, next: NextFunction) {
   const token = tokenFromRequest(req);
   if (!token) return next();
-  loadValidSession(token)
+  loadValidSession(req, token)
     .then((user) => {
       if (user) req.user = user;
       next();

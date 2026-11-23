@@ -8,6 +8,8 @@ import morgan from "morgan";
 import { isProduction, parseCorsOrigins } from "./lib/env.js";
 import authRoutes from "./routes/auth.js";
 import contactRoutes from "./routes/contact.js";
+import appointmentModuleRoutes from "./routes/appointmentsModule.js";
+import patientRoutes from "./routes/patients.js";
 import publicRoutes from "./routes/public.js";
 import resourceRoutes from "./routes/resources.js";
 import { errorHandler, notFound } from "./middleware/error.js";
@@ -77,10 +79,11 @@ export function createApp() {
       version: "1.0.0",
       ui: "/login.html",
       health: "/api/health",
+      openapi: "/api/openapi/auth.yaml",
       docs: {
         health: "GET /api/health",
-        auth: "POST /api/auth/login | /api/auth/signup | /api/auth/forgot-password | /api/auth/reset-password | GET /api/auth/google | GET /api/auth/google/callback | POST /api/auth/logout | GET /api/auth/me",
-        resources: "GET /api/staff | /patients | /appointments | /shifts | /exchanges | /notifications | /dashboard/stats | /activity",
+        auth: "POST /api/auth/login | /signup | /forgot-password | /reset-password | /refresh | /logout | /logout-all | /change-password | /switch-facility | GET /me | /facilities | GET /google",
+        resources: "GET /api/staff | /patients | /patients/:id/clinical | /appointments | /shifts | /exchanges | /notifications | /dashboard/stats | /activity | PATCH /users/:id/status",
         mutations: "POST /api/appointments | /exchanges | /exchanges/approve-pending | /shifts/publish-drafts",
         public: "GET /api/doctors | /doctor-schedules | /departments | /specialties",
         forms: "POST /api/contact | /api/bookings",
@@ -88,9 +91,22 @@ export function createApp() {
     });
   });
 
+  app.get("/api/openapi/auth.yaml", (_req, res) => {
+    res.type("text/yaml").sendFile(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../openapi/auth.yaml"));
+  });
+  app.get("/api/openapi/patients.yaml", (_req, res) => {
+    res.type("text/yaml").sendFile(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../openapi/patients.yaml"));
+  });
+  app.get("/api/openapi/appointments.yaml", (_req, res) => {
+    res.type("text/yaml").sendFile(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../openapi/appointments.yaml"));
+  });
+
   app.use("/api", publicRoutes);
   app.use("/api/auth", authRoutes);
   app.use("/api", contactRoutes);
+  // Patient + appointment/queue modules before generic resources.
+  app.use("/api", patientRoutes);
+  app.use("/api", appointmentModuleRoutes);
   app.use("/api", resourceRoutes);
 
   // Clean URLs → landing HTML (e.g. /signup → signup.html)

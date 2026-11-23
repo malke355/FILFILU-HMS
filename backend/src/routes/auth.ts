@@ -3,6 +3,12 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { hashPassword, signToken, verifyPassword, verifyToken } from "../lib/auth.js";
 import {
+  createAuthSession,
+  revokeAllUserSessions,
+  revokeRefreshToken,
+  rotateAuthSession,
+} from "../lib/authSession.js";
+import {
   buildGoogleAuthUrl,
   exchangeCodeAndVerify,
   friendlyGoogleError,
@@ -20,17 +26,26 @@ import {
   markResetTokenUsed,
 } from "../lib/passwordReset.js";
 import { redactEmail } from "../lib/privacy.js";
-import { PERMISSIONS } from "../lib/rbac.js";
+import { permissionsForRole } from "../lib/rbac.js";
 import { PUBLIC_SIGNUP_ROLE, ROLES, type Role } from "../lib/roles.js";
 import { bumpTokenVersion } from "../lib/session.js";
 import {
+  DEFAULT_FACILITY_ID,
+  listUserFacilities,
+  resolveFacilityContext,
+} from "../lib/tenant.js";
+import { allocatePatientNumber } from "../services/patients/patientNumber.js";
+import { composeDisplayName } from "../services/patients/displayName.js";
+import {
   OAUTH_MODE_COOKIE,
   OAUTH_STATE_COOKIE,
+  REFRESH_COOKIE,
+  clearAuthCookies,
   clearOAuthModeCookie,
   clearOAuthStateCookie,
-  clearSessionCookie,
   setOAuthModeCookie,
   setOAuthStateCookie,
+  setRefreshCookie,
   setSessionCookie,
 } from "../lib/sessionCookie.js";
 import { requireAuth, tokenFromRequest, type AuthedRequest } from "../middleware/auth.js";
@@ -41,6 +56,20 @@ import {
   resetPasswordLimiter,
   signupLimiter,
 } from "../middleware/rateLimit.js";
+
+function clientIp(req: import("express").Request) {
+  const xf = req.headers["x-forwarded-for"];
+  if (typeof xf === "string") return xf.split(",")[0]?.trim() || req.ip || null;
+  return req.ip || null;
+}
+
+function refreshFromRequest(req: import("express").Request) {
+  const cookies = (req as import("express").Request & { cookies?: Record<string, string> }).cookies;
+  const fromCookie = cookies?.[REFRESH_COOKIE];
+  if (fromCookie) return fromCookie;
+  const body = req.body as { refreshToken?: string } | undefined;
+  return typeof body?.refreshToken === "string" ? body.refreshToken : null;
+}
 
 const router = Router();
 
@@ -61,18 +90,23 @@ const signupSchema = z.object({
   role: z.string().optional(),
 });
 
-function publicUser(u: {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  title: string | null;
-  picture?: string | null;
-  staffId: string | null;
-  patientId: string | null;
-  ward: string | null;
-  dept: string | null;
-}) {
+function publicUser(
+  u: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    title: string | null;
+    picture?: string | null;
+    staffId: string | null;
+    patientId: string | null;
+    ward: string | null;
+    dept: string | null;
+    platformRole?: string | null;
+    status?: string | null;
+  },
+  extras?: { facilityId?: string | null; facilities?: unknown[] },
+) {
   const role = u.role as Role;
   return {
     userId: u.id,
@@ -85,11 +119,50 @@ function publicUser(u: {
     patientId: u.patientId,
     ward: u.ward,
     dept: u.dept,
-    permissions: PERMISSIONS[role] || [],
+    status: u.status ?? "active",
+    facilityId: extras?.facilityId ?? null,
+    platformRole: u.platformRole ?? null,
+    facilities: extras?.facilities ?? [],
+    permissions: permissionsForRole(role),
   };
 }
 
-function issueAuth(res: import("express").Response, user: {
+async function ensureFacilityMembership(
+  userId: string,
+  data: {
+    facilityId?: string;
+    role: string;
+    staffId?: string | null;
+    title?: string | null;
+    ward?: string | null;
+    dept?: string | null;
+  },
+) {
+  const facilityId = data.facilityId || DEFAULT_FACILITY_ID;
+  return prisma.facilityMembership.upsert({
+    where: { userId_facilityId: { userId, facilityId } },
+    create: {
+      userId,
+      facilityId,
+      role: data.role,
+      status: "active",
+      staffId: data.staffId ?? null,
+      title: data.title ?? null,
+      ward: data.ward ?? null,
+      dept: data.dept ?? null,
+    },
+    update: {
+      role: data.role,
+      status: "active",
+      staffId: data.staffId ?? undefined,
+      title: data.title ?? undefined,
+      ward: data.ward ?? undefined,
+      dept: data.dept ?? undefined,
+    },
+  });
+}
+
+type SessionUser = {
   id: string;
   email: string;
   name: string;
@@ -101,22 +174,109 @@ function issueAuth(res: import("express").Response, user: {
   ward: string | null;
   dept: string | null;
   tokenVersion?: number;
-}, status = 200) {
+  platformRole?: string | null;
+  defaultFacilityId?: string | null;
+  status?: string | null;
+};
+
+/** Sets access + refresh cookies and syncs User mirrors. Does not write a response body. */
+async function establishSession(
+  res: import("express").Response,
+  user: SessionUser,
+  requestedFacilityId: string | null | undefined,
+  req?: import("express").Request,
+) {
+  if (user.status && user.status !== "active") {
+    return { error: "This account is deactivated. Contact an administrator.", status: 403 as const };
+  }
+
+  const ctx = await resolveFacilityContext(user.id, {
+    requestedFacilityId: requestedFacilityId || null,
+    defaultFacilityId: user.defaultFacilityId || DEFAULT_FACILITY_ID,
+    platformRole: user.platformRole,
+  });
+  if (!ctx) {
+    return { error: "No active facility membership for this account.", status: 403 as const };
+  }
+
+  const role = ctx.role;
+  const staffId = ctx.membership?.staffId ?? user.staffId;
+  const ward = ctx.membership?.ward ?? user.ward;
+  const dept = ctx.membership?.dept ?? user.dept;
+  const title = ctx.membership?.title ?? user.title;
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      role,
+      title,
+      ward,
+      dept,
+      staffId: staffId || user.staffId,
+      defaultFacilityId: ctx.facilityId,
+    },
+  });
+
   const token = signToken({
     sub: user.id,
     email: user.email,
-    role: user.role as Role,
+    role,
     name: user.name,
     tv: user.tokenVersion ?? 0,
-    staffId: user.staffId,
+    facilityId: ctx.facilityId,
+    platformRole: user.platformRole,
+    staffId,
     patientId: user.patientId,
-    ward: user.ward,
-    dept: user.dept,
-    title: user.title,
+    ward,
+    dept,
+    title,
   });
   setSessionCookie(res, token);
-  // Never return the JWT in the JSON body — browser sessions use the httpOnly cookie only.
-  return res.status(status).json({ user: publicUser(user) });
+
+  const session = await createAuthSession({
+    userId: user.id,
+    facilityId: ctx.facilityId,
+    userAgent: req?.headers["user-agent"] ? String(req.headers["user-agent"]) : null,
+    ip: req ? clientIp(req) : null,
+  });
+  setRefreshCookie(res, session.refreshToken, session.expiresAt);
+
+  const facilities = await listUserFacilities(user.id);
+  return {
+    facilityId: ctx.facilityId,
+    role,
+    staffId: staffId || null,
+    ward,
+    dept,
+    title,
+    facilities,
+  };
+}
+
+async function issueAuth(
+  res: import("express").Response,
+  user: SessionUser,
+  status = 200,
+  requestedFacilityId?: string | null,
+  req?: import("express").Request,
+) {
+  const result = await establishSession(res, user, requestedFacilityId, req);
+  if ("error" in result) {
+    return res.status(result.status ?? 403).json({ error: result.error || "Authentication failed." });
+  }
+  return res.status(status).json({
+    user: publicUser(
+      {
+        ...user,
+        role: result.role,
+        title: result.title,
+        ward: result.ward,
+        dept: result.dept,
+        staffId: result.staffId,
+      },
+      { facilityId: result.facilityId, facilities: result.facilities },
+    ),
+  });
 }
 
 type GoogleOAuthMode = { intent: "login" | "signup" };
@@ -193,17 +353,28 @@ async function createOrSignInGooglePatient(profile: GoogleProfile) {
   }
 
   const name = profile.name || email.split("@")[0] || "Google user";
+  const nameParts = name.trim().split(/\s+/);
+  const firstName = nameParts[0] || name;
+  const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : name;
+  const middleName = nameParts.length > 2 ? nameParts.slice(1, -1).join(" ") : null;
+  const patientNumber = await allocatePatientNumber(DEFAULT_FACILITY_ID);
   // No seed/default doctor assignment — admin assigns primary doctor later.
   const patient = await prisma.patient.create({
     data: {
-      name,
-      age: 30,
-      condition: "New patient registration",
+      facilityId: DEFAULT_FACILITY_ID,
+      patientNumber,
+      name: composeDisplayName({ firstName, middleName, lastName, name }),
+      firstName,
+      middleName,
+      lastName,
+      age: null,
+      email,
+      status: "active",
       doctorId: null,
     },
   });
 
-  return prisma.user.create({
+  const user = await prisma.user.create({
     data: {
       email,
       passwordHash: null,
@@ -213,12 +384,19 @@ async function createOrSignInGooglePatient(profile: GoogleProfile) {
       picture: profile.picture,
       googleSub: profile.sub,
       emailVerified: true,
+      defaultFacilityId: DEFAULT_FACILITY_ID,
       staffId: null,
       patientId: patient.id,
       ward: null,
       dept: null,
     },
   });
+  await ensureFacilityMembership(user.id, {
+    facilityId: DEFAULT_FACILITY_ID,
+    role: PUBLIC_SIGNUP_ROLE,
+    title: "Patient",
+  });
+  return user;
 }
 
 async function assertStaffActive(user: { staffId: string | null; role: string }) {
@@ -240,14 +418,47 @@ router.post("/login", loginLimiter, async (req, res, next) => {
   try {
     const body = loginSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email: body.email.toLowerCase() } });
-    if (!user) return res.status(401).json({ error: "Invalid email or password." });
+    if (!user) {
+      await writeAudit({
+        action: "auth.login_failed",
+        entity: "User",
+        meta: { reason: "unknown_email" },
+        req,
+      });
+      return res.status(401).json({ error: "Invalid email or password." });
+    }
+
+    if (user.status && user.status !== "active") {
+      await writeAudit({
+        actorId: user.id,
+        action: "auth.login_failed",
+        entity: "User",
+        meta: { reason: "inactive" },
+        req,
+      });
+      return res.status(403).json({ error: "This account is deactivated. Contact an administrator." });
+    }
 
     const ok = await verifyPassword(body.password, user.passwordHash);
-    if (!ok) return res.status(401).json({ error: "Invalid email or password." });
+    if (!ok) {
+      await writeAudit({
+        actorId: user.id,
+        action: "auth.login_failed",
+        entity: "User",
+        meta: { reason: "bad_password" },
+        req,
+      });
+      return res.status(401).json({ error: "Invalid email or password." });
+    }
 
-    if (body.role && body.role !== user.role) {
+    const ctxPreview = await resolveFacilityContext(user.id, {
+      defaultFacilityId: user.defaultFacilityId,
+      platformRole: user.platformRole,
+    });
+    const activeRole = ctxPreview?.role || user.role;
+    if (body.role && body.role !== activeRole) {
       return res.status(403).json({
-        error: `This account is assigned the ${user.role} role. Choose “${user.role}” or use another account.`,
+        error: `This account is assigned the ${activeRole} role. Choose “${activeRole}” or use another account.`,
       });
     }
 
@@ -258,9 +469,16 @@ router.post("/login", loginLimiter, async (req, res, next) => {
       return res.status(e.status || 403).json({ error: e.message });
     }
 
-    await writeAudit({ actorId: user.id, action: "auth.login", entity: "User", meta: { role: user.role } });
+    await writeAudit({
+      actorId: user.id,
+      facilityId: ctxPreview?.facilityId,
+      action: "auth.login",
+      entity: "User",
+      meta: { role: activeRole },
+      req,
+    });
 
-    return issueAuth(res, user);
+    return issueAuth(res, user, 200, null, req);
   } catch (err) {
     next(err);
   }
@@ -283,13 +501,19 @@ router.post("/signup", signupLimiter, async (req, res, next) => {
 
     const passwordHash = await hashPassword(body.password);
     const name = `${body.first} ${body.last}`.trim();
+    const patientNumber = await allocatePatientNumber(DEFAULT_FACILITY_ID);
 
     // Leave primary doctor unassigned — never hardcode seed IDs like s-doc-1.
     const patient = await prisma.patient.create({
       data: {
+        facilityId: DEFAULT_FACILITY_ID,
+        patientNumber,
         name,
-        age: 30,
-        condition: "New patient registration",
+        firstName: body.first.trim(),
+        lastName: body.last.trim(),
+        email,
+        age: null,
+        status: "active",
         doctorId: null,
       },
     });
@@ -302,16 +526,28 @@ router.post("/signup", signupLimiter, async (req, res, next) => {
         role: PUBLIC_SIGNUP_ROLE,
         title: "Patient",
         emailVerified: false,
+        defaultFacilityId: DEFAULT_FACILITY_ID,
         staffId: null,
         patientId: patient.id,
         ward: null,
         dept: null,
       },
     });
+    await ensureFacilityMembership(user.id, {
+      facilityId: DEFAULT_FACILITY_ID,
+      role: PUBLIC_SIGNUP_ROLE,
+      title: "Patient",
+    });
 
-    await writeAudit({ actorId: user.id, action: "auth.signup", entity: "User", meta: { role: user.role } });
+    await writeAudit({
+      actorId: user.id,
+      facilityId: DEFAULT_FACILITY_ID,
+      action: "auth.signup",
+      entity: "User",
+      meta: { role: user.role },
+    });
 
-    return issueAuth(res, user, 201);
+    return issueAuth(res, user, 201, null, req);
   } catch (err) {
     next(err);
   }
@@ -405,14 +641,16 @@ router.post("/reset-password", resetPasswordLimiter, async (req, res, next) => {
       },
     });
     await markResetTokenUsed(row.id, row.userId);
+    await revokeAllUserSessions(row.userId);
 
     await writeAudit({
       actorId: row.userId,
       action: "auth.reset_password",
       entity: "User",
+      req,
     });
 
-    clearSessionCookie(res);
+    clearAuthCookies(res);
     return res.json({ ok: true, message: "Password updated. You can sign in with your new password." });
   } catch (err) {
     next(err);
@@ -491,25 +729,22 @@ router.get("/google/callback", async (req, res) => {
       return res.redirect(authRedirectError(e.message, "login.html"));
     }
 
-    const token = signToken({
-      sub: user.id,
-      email: user.email,
-      role: user.role as Role,
-      name: user.name,
-      tv: user.tokenVersion ?? 0,
-      staffId: user.staffId,
-      patientId: user.patientId,
-      ward: user.ward,
-      dept: user.dept,
-      title: user.title,
-    });
-    setSessionCookie(res, token);
+    if (user.status && user.status !== "active") {
+      return res.redirect(authRedirectError("This account is deactivated. Contact an administrator.", "login.html"));
+    }
+
+    const established = await establishSession(res, user, null, req);
+    if ("error" in established) {
+      return res.redirect(authRedirectError(established.error || "Authentication failed.", errPage));
+    }
 
     await writeAudit({
       actorId: user.id,
+      facilityId: established.facilityId,
       action: mode.intent === "signup" ? "auth.google_signup" : "auth.google",
       entity: "User",
-      meta: { role: user.role },
+      meta: { role: established.role },
+      req,
     });
 
     const dest = new URL("app.html", frontendOrigin().endsWith("/") ? frontendOrigin() : `${frontendOrigin()}/`);
@@ -528,19 +763,223 @@ router.get("/logout", (_req, res) => {
 
 router.post("/logout", async (req, res, next) => {
   try {
+    const refresh = refreshFromRequest(req);
+    let userId: string | null = null;
+    if (refresh) {
+      const revoked = await revokeRefreshToken(refresh);
+      userId = revoked.userId || null;
+    }
     const token = tokenFromRequest(req);
     if (token) {
       try {
         const payload = verifyToken(token);
-        await bumpTokenVersion(payload.sub);
+        userId = payload.sub;
+        // Do not bump tokenVersion on single-session logout (other devices stay valid).
       } catch {
         /* ignore invalid cookie */
       }
     }
-    clearSessionCookie(res);
-    clearOAuthStateCookie(res);
-    clearOAuthModeCookie(res);
+    if (userId) {
+      await writeAudit({
+        actorId: userId,
+        action: "auth.logout",
+        entity: "User",
+        req,
+      });
+    }
+    clearAuthCookies(res);
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Revoke all refresh sessions and invalidate access JWTs. */
+router.post("/logout-all", requireAuth, async (req: AuthedRequest, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    await revokeAllUserSessions(userId);
+    await bumpTokenVersion(userId);
+    await writeAudit({
+      actorId: userId,
+      facilityId: req.user!.facilityId,
+      action: "auth.logout_all",
+      entity: "User",
+      req,
+    });
+    clearAuthCookies(res);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Rotate refresh token and issue a new short-lived access JWT. */
+router.post("/refresh", async (req, res, next) => {
+  try {
+    const raw = refreshFromRequest(req);
+    if (!raw) return res.status(401).json({ error: "Refresh token required." });
+
+    const rotated = await rotateAuthSession(raw, {
+      userAgent: req.headers["user-agent"] ? String(req.headers["user-agent"]) : null,
+      ip: clientIp(req),
+    });
+
+    if (!rotated.ok) {
+      clearAuthCookies(res);
+      if (rotated.reason === "reuse") {
+        await writeAudit({
+          actorId: rotated.userId,
+          action: "auth.refresh_reuse",
+          entity: "AuthSession",
+          meta: { familyId: rotated.familyId },
+          req,
+        });
+        if (rotated.userId) await bumpTokenVersion(rotated.userId);
+      }
+      return res.status(401).json({ error: "Invalid or expired refresh token." });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: rotated.userId } });
+    if (!user || (user.status && user.status !== "active")) {
+      clearAuthCookies(res);
+      return res.status(401).json({ error: "Invalid or expired refresh token." });
+    }
+
+    const ctx = await resolveFacilityContext(user.id, {
+      requestedFacilityId: rotated.facilityId,
+      defaultFacilityId: user.defaultFacilityId || DEFAULT_FACILITY_ID,
+      platformRole: user.platformRole,
+    });
+    if (!ctx) {
+      clearAuthCookies(res);
+      return res.status(403).json({ error: "No active facility membership." });
+    }
+
+    const role = ctx.role;
+    const staffId = ctx.membership?.staffId ?? user.staffId;
+    const ward = ctx.membership?.ward ?? user.ward;
+    const dept = ctx.membership?.dept ?? user.dept;
+    const title = ctx.membership?.title ?? user.title;
+
+    const access = signToken({
+      sub: user.id,
+      email: user.email,
+      role,
+      name: user.name,
+      tv: user.tokenVersion ?? 0,
+      facilityId: ctx.facilityId,
+      platformRole: user.platformRole,
+      staffId,
+      patientId: user.patientId,
+      ward,
+      dept,
+      title,
+    });
+    setSessionCookie(res, access);
+    setRefreshCookie(res, rotated.refreshToken, rotated.expiresAt);
+
+    await writeAudit({
+      actorId: user.id,
+      facilityId: ctx.facilityId,
+      action: "auth.refresh",
+      entity: "AuthSession",
+      req,
+    });
+
+    const facilities = await listUserFacilities(user.id);
+    return res.json({
+      user: publicUser(
+        { ...user, role, title, ward, dept, staffId: staffId || null },
+        { facilityId: ctx.facilityId, facilities },
+      ),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(6).max(128),
+});
+
+router.post("/change-password", requireAuth, async (req: AuthedRequest, res, next) => {
+  try {
+    const body = changePasswordSchema.parse(req.body);
+    const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    const ok = await verifyPassword(body.currentPassword, user.passwordHash);
+    if (!ok) return res.status(401).json({ error: "Current password is incorrect." });
+
+    const passwordHash = await hashPassword(body.newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+    });
+    await revokeAllUserSessions(user.id);
+
+    await writeAudit({
+      actorId: user.id,
+      facilityId: req.user!.facilityId,
+      action: "auth.change_password",
+      entity: "User",
+      req,
+    });
+
+    clearAuthCookies(res);
+    return res.json({ ok: true, message: "Password updated. Please sign in again." });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const switchFacilitySchema = z.object({
+  facilityId: z.string().min(1).max(80),
+});
+
+/** Switch active facility — membership validated server-side; issues new cookies. */
+router.post("/switch-facility", requireAuth, async (req: AuthedRequest, res, next) => {
+  try {
+    const body = switchFacilitySchema.parse(req.body);
+    const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!user) return res.status(404).json({ error: "User not found." });
+    if (user.status && user.status !== "active") {
+      return res.status(403).json({ error: "This account is deactivated." });
+    }
+
+    const ctx = await resolveFacilityContext(user.id, {
+      requestedFacilityId: body.facilityId,
+      defaultFacilityId: user.defaultFacilityId,
+      platformRole: user.platformRole,
+    });
+    if (!ctx || ctx.facilityId !== body.facilityId) {
+      return res.status(403).json({ error: "You are not a member of that facility." });
+    }
+
+    const currentRefresh = refreshFromRequest(req);
+    if (currentRefresh) await revokeRefreshToken(currentRefresh);
+
+    await writeAudit({
+      actorId: user.id,
+      facilityId: ctx.facilityId,
+      action: "auth.switch_facility",
+      entity: "Facility",
+      meta: { from: req.user!.facilityId, to: ctx.facilityId },
+      req,
+    });
+
+    return issueAuth(res, user, 200, ctx.facilityId, req);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/facilities", requireAuth, async (req: AuthedRequest, res, next) => {
+  try {
+    const facilities = await listUserFacilities(req.user!.sub);
+    res.json({ facilities, activeFacilityId: req.user!.facilityId || null });
   } catch (err) {
     next(err);
   }
@@ -550,14 +989,31 @@ router.get("/me", requireAuth, async (req: AuthedRequest, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
     if (!user) return res.status(404).json({ error: "User not found." });
+    if (user.status && user.status !== "active") {
+      clearAuthCookies(res);
+      return res.status(403).json({ error: "This account is deactivated." });
+    }
     try {
       await assertStaffActive(user);
     } catch (err) {
       const e = err as Error & { status?: number };
-      clearSessionCookie(res);
+      clearAuthCookies(res);
       return res.status(e.status || 403).json({ error: e.message });
     }
-    res.json({ user: publicUser(user) });
+    const facilities = await listUserFacilities(user.id);
+    res.json({
+      user: publicUser(
+        {
+          ...user,
+          role: req.user!.role,
+          staffId: req.user!.staffId ?? user.staffId,
+          ward: req.user!.ward ?? user.ward,
+          dept: req.user!.dept ?? user.dept,
+          title: req.user!.title ?? user.title,
+        },
+        { facilityId: req.user!.facilityId, facilities },
+      ),
+    });
   } catch (err) {
     next(err);
   }

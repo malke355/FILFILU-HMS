@@ -2,9 +2,18 @@ import { Router } from "express";
 import { pageMeta, parsePage } from "../lib/pagination.js";
 import { prisma } from "../lib/prisma.js";
 import { can } from "../lib/rbac.js";
+import { DEFAULT_FACILITY_ID } from "../lib/tenant.js";
 import { optionalAuth, requireAuth, type AuthedRequest } from "../middleware/auth.js";
 
 const router = Router();
+
+function publicFacilityId(req: { user?: { facilityId?: string | null }; query: Record<string, unknown> }) {
+  if (req.user?.facilityId) return req.user.facilityId;
+  const q = typeof req.query.facilityId === "string" ? req.query.facilityId.trim() : "";
+  // Unauthenticated landing pages only see the default facility unless a valid facilityId query is passed
+  // (slug/id lookup without leaking other tenants' private data — public directory only).
+  return q || DEFAULT_FACILITY_ID;
+}
 
 router.get("/health", async (_req, res) => {
   try {
@@ -16,7 +25,6 @@ router.get("/health", async (_req, res) => {
       time: new Date().toISOString(),
     });
   } catch {
-    // No stack, host, or migration hints — keep health responses opaque.
     res.status(503).json({
       ok: false,
       service: "filfilu-api",
@@ -26,10 +34,11 @@ router.get("/health", async (_req, res) => {
   }
 });
 
-router.get("/departments", async (_req, res, next) => {
+router.get("/departments", optionalAuth, async (req, res, next) => {
   try {
+    const facilityId = publicFacilityId(req as AuthedRequest);
     const rows = await prisma.department.findMany({
-      where: { active: true },
+      where: { active: true, facilityId },
       orderBy: { name: "asc" },
     });
     res.json({ data: rows });
@@ -41,10 +50,13 @@ router.get("/departments", async (_req, res, next) => {
 /** Public doctor directory (patients + anonymous landing). */
 router.get("/doctors", optionalAuth, async (req, res, next) => {
   try {
+    const facilityId = publicFacilityId(req as AuthedRequest);
     const { page, limit, skip } = parsePage(req);
+    const where = { facilityId };
     const [total, rows] = await Promise.all([
-      prisma.doctorPublic.count(),
+      prisma.doctorPublic.count({ where }),
       prisma.doctorPublic.findMany({
+        where,
         include: { doctor: { select: { id: true, name: true, status: true } } },
         orderBy: { specialty: "asc" },
         skip,
@@ -75,8 +87,9 @@ router.get("/doctor-schedules", requireAuth, async (req: AuthedRequest, res, nex
     if (!can(u.role, "schedule:read_public") && !can(u.role, "appointments:read_all")) {
       return res.status(403).json({ error: "Missing permission." });
     }
+    const facilityId = u.facilityId!;
     const specialty = typeof req.query.specialty === "string" ? req.query.specialty : undefined;
-    const where = specialty ? { specialty } : undefined;
+    const where = { facilityId, ...(specialty ? { specialty } : {}) };
     const { page, limit, skip } = parsePage(req);
     const [total, rows] = await Promise.all([
       prisma.doctorSchedule.count({ where }),
@@ -107,9 +120,11 @@ router.get("/doctor-schedules", requireAuth, async (req: AuthedRequest, res, nex
   }
 });
 
-router.get("/specialties", async (_req, res, next) => {
+router.get("/specialties", optionalAuth, async (req, res, next) => {
   try {
+    const facilityId = publicFacilityId(req as AuthedRequest);
     const rows = await prisma.doctorSchedule.findMany({
+      where: { facilityId },
       select: { specialty: true },
       distinct: ["specialty"],
       orderBy: { specialty: "asc" },

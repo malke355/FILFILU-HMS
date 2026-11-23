@@ -1,0 +1,54 @@
+openapi: 3.0.3
+info:
+  title: Filfilu Appointment & Queue API
+  version: "5.0.0"
+servers:
+  - url: http://127.0.0.1:8080/api
+paths:
+  /appointments/book:
+    post:
+      summary: Book appointment (reception)
+      responses:
+        "201": { description: Created with appointmentNumber }
+        "409": { description: Slot conflict }
+  /appointments/availability:
+    get:
+      summary: List free slots for doctor/date
+  /appointments/calendar:
+    get:
+      summary: Calendar range
+  /appointments/{id}/check-in:
+    post:
+      summary: Check in and create queue entry
+  /appointments/{id}/reschedule:
+    post:
+      summary: Reschedule with conflict checks
+  /appointments/{id}/cancel:
+    post:
+      summary: Cancel with reason
+  /walk-ins:
+    post:
+      summary: Walk-in appointment + queue
+  /queue:
+    get:
+      summary: Queue board (no clinical notes)
+  /queue/call-next:
+    post:
+      summary: Call next waiting patient
+  /queue/{id}/transition:
+    post:
+      summary: Update queue status
+  /schedules/doctor-day:
+    put:
+      summary: Upsert provider day slots
+  /schedules/unavailability:
+    post:
+      summary: Create leave/break
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: filfilu_token
+security:
+  - cookieAuth: []

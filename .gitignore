@@ -33,3 +33,7 @@ deploy-static
 !.env.production.example
 !backend/.env.example
 !backend/.env.production.example
+
+# Private patient document storage (Section 4)
+backend/storage/
+!backend/storage/.gitkeep

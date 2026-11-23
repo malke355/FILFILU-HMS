@@ -3,6 +3,7 @@ import { z } from "zod";
 import { writeAudit } from "../lib/audit.js";
 import { assertNotTooFarPast, dateStringSchema } from "../lib/datetime.js";
 import { prisma } from "../lib/prisma.js";
+import { DEFAULT_FACILITY_ID } from "../lib/tenant.js";
 import { bookingLimiter, contactLimiter } from "../middleware/rateLimit.js";
 
 const router = Router();
@@ -14,10 +15,22 @@ router.post("/contact", contactLimiter, async (req, res, next) => {
       email: z.string().email().max(200),
       topic: z.string().min(1).max(120),
       message: z.string().min(1).max(4000),
+      facilityId: z.string().optional(),
     }).parse(req.body);
+    // Never trust client facilityId for writes — public forms land on default facility.
+    const facilityId = DEFAULT_FACILITY_ID;
 
-    const row = await prisma.contactMessage.create({ data: body });
+    const row = await prisma.contactMessage.create({
+      data: {
+        facilityId,
+        name: body.name,
+        email: body.email,
+        topic: body.topic,
+        message: body.message,
+      },
+    });
     await writeAudit({
+      facilityId,
       action: "contact.create",
       entity: row.id,
       meta: { topic: body.topic, messageLength: body.message.length },
@@ -37,11 +50,14 @@ router.post("/bookings", bookingLimiter, async (req, res, next) => {
       name: z.string().min(1).max(120),
       department: z.string().min(1).max(120),
       date: dateStringSchema,
+      facilityId: z.string().optional(),
     }).parse(req.body);
     assertNotTooFarPast(body.date);
+    const facilityId = DEFAULT_FACILITY_ID;
 
     const row = await prisma.bookingRequest.create({
       data: {
+        facilityId,
         name: body.name,
         department: body.department,
         date: body.date,
@@ -49,6 +65,7 @@ router.post("/bookings", bookingLimiter, async (req, res, next) => {
       },
     });
     await writeAudit({
+      facilityId,
       action: "booking.create",
       entity: row.id,
       meta: { department: body.department, date: body.date },

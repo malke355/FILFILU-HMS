@@ -17,7 +17,7 @@
   ).replace(/\/$/, "");
   const STATIC_HOST = Boolean(global.FILFILU_STATIC_HOST) || (onGithubPages && !configuredApi);
 
-  /** @typedef {"admin"|"doctor"|"nurse"|"patient"} Role */
+  /** @typedef {string} Role */
 
   const ROLE_META = {
     admin: {
@@ -26,6 +26,20 @@
       accent: "#1D6FE0",
       greeting: "Hospital operations command center",
       blurb: "Set up users and roles, publish rosters, oversee appointments, and keep the system safe — not clinical charting.",
+    },
+    facility_owner: {
+      label: "Facility owner",
+      short: "Owner",
+      accent: "#1D6FE0",
+      greeting: "Facility ownership workspace",
+      blurb: "Oversee facility settings, staff, and operations.",
+    },
+    facility_admin: {
+      label: "Facility administrator",
+      short: "Admin",
+      accent: "#1D6FE0",
+      greeting: "Facility operations",
+      blurb: "Manage staff, appointments, and facility settings.",
     },
     doctor: {
       label: "Doctor",
@@ -40,6 +54,48 @@
       accent: "#7C3AED",
       greeting: "Ward care workspace",
       blurb: "Track ward patients, clinic lists, nursing shifts, and handoff notes.",
+    },
+    receptionist: {
+      label: "Receptionist",
+      short: "Front desk",
+      accent: "#0369A1",
+      greeting: "Front desk workspace",
+      blurb: "Register patients and manage appointments — clinical notes stay restricted.",
+    },
+    lab_technician: {
+      label: "Laboratory technician",
+      short: "Lab",
+      accent: "#0F766E",
+      greeting: "Laboratory workspace",
+      blurb: "Manage lab orders and results for assigned work.",
+    },
+    pharmacist: {
+      label: "Pharmacist",
+      short: "Pharmacy",
+      accent: "#0F766E",
+      greeting: "Pharmacy workspace",
+      blurb: "Dispense medications and manage pharmacy inventory.",
+    },
+    cashier: {
+      label: "Cashier",
+      short: "Cashier",
+      accent: "#B45309",
+      greeting: "Billing workspace",
+      blurb: "Handle billing and payments without clinical chart access.",
+    },
+    inventory_manager: {
+      label: "Inventory manager",
+      short: "Inventory",
+      accent: "#B45309",
+      greeting: "Inventory workspace",
+      blurb: "Track stock and supply levels for the facility.",
+    },
+    accountant: {
+      label: "Accountant",
+      short: "Accounts",
+      accent: "#B45309",
+      greeting: "Finance workspace",
+      blurb: "Review billing and financial reports.",
     },
     patient: {
       label: "Patient",
@@ -75,8 +131,12 @@
     admin: [
       { id: "overview", label: "Command center", icon: "grid" },
       { id: "staff", label: "Staff & roles", icon: "users" },
+      { id: "patients", label: "Patients", icon: "heart" },
+      { id: "register", label: "Register patient", icon: "user" },
       { id: "schedule", label: "Duty schedule", icon: "calendar" },
       { id: "appointments", label: "Appointments", icon: "clipboard" },
+      { id: "calendar", label: "Calendar", icon: "calendar" },
+      { id: "queue", label: "Queue", icon: "clipboard" },
       { id: "exchanges", label: "Approvals", icon: "swap" },
       { id: "reports", label: "Analytics", icon: "chart" },
     ],
@@ -91,10 +151,43 @@
     nurse: [
       { id: "overview", label: "Ward overview", icon: "grid" },
       { id: "ward", label: "Patient board", icon: "bed" },
+      { id: "patients", label: "Patients", icon: "heart" },
       { id: "schedule", label: "My shifts", icon: "calendar" },
       { id: "appointments", label: "Clinic list", icon: "clipboard" },
       { id: "exchanges", label: "Shift swaps", icon: "swap" },
       { id: "notifications", label: "Handoffs", icon: "bell" },
+    ],
+    receptionist: [
+      { id: "overview", label: "Front desk", icon: "grid" },
+      { id: "patients", label: "Patients", icon: "heart" },
+      { id: "register", label: "Register patient", icon: "user" },
+      { id: "appointments", label: "Appointments", icon: "clipboard" },
+      { id: "calendar", label: "Calendar", icon: "calendar" },
+      { id: "queue", label: "Queue", icon: "clipboard" },
+      { id: "notifications", label: "Updates", icon: "bell" },
+    ],
+    lab_technician: [
+      { id: "overview", label: "Lab", icon: "grid" },
+      { id: "patients", label: "Orders", icon: "heart" },
+      { id: "notifications", label: "Alerts", icon: "bell" },
+    ],
+    pharmacist: [
+      { id: "overview", label: "Pharmacy", icon: "grid" },
+      { id: "notifications", label: "Alerts", icon: "bell" },
+    ],
+    cashier: [
+      { id: "overview", label: "Billing", icon: "grid" },
+      { id: "appointments", label: "Visits", icon: "clipboard" },
+      { id: "notifications", label: "Updates", icon: "bell" },
+    ],
+    inventory_manager: [
+      { id: "overview", label: "Inventory", icon: "grid" },
+      { id: "notifications", label: "Alerts", icon: "bell" },
+    ],
+    accountant: [
+      { id: "overview", label: "Accounts", icon: "grid" },
+      { id: "reports", label: "Reports", icon: "chart" },
+      { id: "notifications", label: "Updates", icon: "bell" },
     ],
     patient: [
       { id: "overview", label: "Home", icon: "grid" },
@@ -105,6 +198,8 @@
       { id: "profile", label: "My profile", icon: "user" },
     ],
   };
+  NAV.facility_owner = NAV.admin;
+  NAV.facility_admin = NAV.admin;
 
   function t(key, vars) {
     const I = global.FilfiluI18n;
@@ -149,6 +244,7 @@
 
   function normalizeRole(value) {
     const r = String(value || "").trim().toLowerCase();
+    if (r === "facility_owner" || r === "facility_admin" || r === "owner") return "admin";
     return ROLE_META[r] ? r : null;
   }
 
@@ -182,6 +278,9 @@
       patientId: user.patientId || null,
       ward: user.ward || null,
       dept: user.dept || null,
+      facilityId: user.facilityId || null,
+      facilities: Array.isArray(user.facilities) ? user.facilities : [],
+      platformRole: user.platformRole || null,
       meta: roleMeta(role),
       permissions: (user.permissions && user.permissions.length ? user.permissions : PERMISSIONS[role]).slice(),
       // Auth is httpOnly-cookie only — never store a JWT in sessionStorage.
@@ -199,6 +298,35 @@
     return session;
   }
 
+  let refreshInFlight = null;
+
+  async function tryRefreshSession() {
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/refresh`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        if (!res.ok) return null;
+        const body = await res.json();
+        if (body?.user) {
+          const session = toSession(body.user);
+          writeSession(session);
+          return session;
+        }
+        return null;
+      } catch {
+        return null;
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+    return refreshInFlight;
+  }
+
   async function api(path, options = {}) {
     if (!API_BASE) {
       const err = new Error(
@@ -211,6 +339,10 @@
     if (options.body != null && !headers["Content-Type"]) {
       headers["Content-Type"] = "application/json";
     }
+    const session = readSession();
+    if (session?.facilityId && !headers["X-Facility-Id"]) {
+      headers["X-Facility-Id"] = session.facilityId;
+    }
     // Cookie session only — do not attach Authorization from storage.
     const res = await fetch(`${API_BASE}${path}`, {
       ...options,
@@ -222,6 +354,19 @@
       body = await res.json();
     } catch {
       body = null;
+    }
+    // Access JWT expired — rotate refresh once, then retry (except auth endpoints).
+    if (
+      res.status === 401 &&
+      !options._retried &&
+      !String(path).startsWith("/auth/login") &&
+      !String(path).startsWith("/auth/refresh") &&
+      !String(path).startsWith("/auth/logout")
+    ) {
+      const refreshed = await tryRefreshSession();
+      if (refreshed) {
+        return api(path, { ...options, _retried: true });
+      }
     }
     if (!res.ok) {
       const err = new Error((body && body.error) || `HTTP ${res.status}`);
@@ -268,6 +413,200 @@
     clearSession();
   }
 
+  async function logoutAll() {
+    try {
+      await api("/auth/logout-all", { method: "POST", body: "{}" });
+    } catch {
+      /* ignore */
+    }
+    clearSession();
+  }
+
+  async function switchFacility(facilityId) {
+    const body = await api("/auth/switch-facility", {
+      method: "POST",
+      body: JSON.stringify({ facilityId }),
+    });
+    const session = toSession(body.user);
+    writeSession(session);
+    await hydrateFromApi(session);
+    return session;
+  }
+
+  async function changePassword(currentPassword, newPassword) {
+    return api("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
+  async function listFacilities() {
+    return api("/auth/facilities");
+  }
+
+  async function searchPatients(params = {}) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.status) qs.set("status", params.status);
+    if (params.sort) qs.set("sort", params.sort);
+    if (params.page) qs.set("page", String(params.page));
+    if (params.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return api(`/patients${suffix}`);
+  }
+
+  async function getPatient(id) {
+    return api(`/patients/${encodeURIComponent(id)}`);
+  }
+
+  async function registerPatient(payload) {
+    return api("/patients", { method: "POST", body: JSON.stringify(payload) });
+  }
+
+  async function updatePatient(id, payload) {
+    return api(`/patients/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async function patientStats() {
+    return api("/patients/stats");
+  }
+
+  async function checkPatientDuplicates(payload) {
+    return api("/patients/duplicates", { method: "POST", body: JSON.stringify(payload) });
+  }
+
+  async function createEncounter(patientId, payload) {
+    return api(`/patients/${encodeURIComponent(patientId)}/encounters`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async function addMedicalHistory(patientId, payload) {
+    return api(`/patients/${encodeURIComponent(patientId)}/medical-history`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async function appointmentStats() {
+    return api("/appointments/stats");
+  }
+
+  async function appointmentAvailability(doctorId, date, durationMinutes) {
+    const qs = new URLSearchParams({ doctorId, date });
+    if (durationMinutes) qs.set("durationMinutes", String(durationMinutes));
+    return api(`/appointments/availability?${qs}`);
+  }
+
+  async function appointmentCalendar(from, to, extras = {}) {
+    const qs = new URLSearchParams({ from, to });
+    if (extras.doctorId) qs.set("doctorId", extras.doctorId);
+    if (extras.dept) qs.set("dept", extras.dept);
+    return api(`/appointments/calendar?${qs}`);
+  }
+
+  async function bookAppointment(payload) {
+    return api("/appointments/book", { method: "POST", body: JSON.stringify(payload) });
+  }
+
+  async function checkInAppointment(id, payload = {}) {
+    return api(`/appointments/${encodeURIComponent(id)}/check-in`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async function cancelAppointment(id, reason) {
+    return api(`/appointments/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason || null }),
+    });
+  }
+
+  async function createWalkIn(payload) {
+    return api("/walk-ins", { method: "POST", body: JSON.stringify(payload) });
+  }
+
+  async function fetchQueue(params = {}) {
+    const qs = new URLSearchParams();
+    if (params.date) qs.set("date", params.date);
+    if (params.dept) qs.set("dept", params.dept);
+    if (params.doctorId) qs.set("doctorId", params.doctorId);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return api(`/queue${suffix}`);
+  }
+
+  async function callNextQueue(payload) {
+    return api("/queue/call-next", { method: "POST", body: JSON.stringify(payload) });
+  }
+
+  async function transitionQueue(id, status, skipReason) {
+    return api(`/queue/${encodeURIComponent(id)}/transition`, {
+      method: "POST",
+      body: JSON.stringify({ status, skipReason: skipReason || null }),
+    });
+  }
+
+  /** Role-scoped bootstrap — avoid fetching endpoints the workspace never uses. */
+  function hydratePathsForRole(role) {
+    const r = normalizeRole(role) || "patient";
+    // patient handled below after receptionist branch (includes /patients for profile)
+    if (r === "doctor" || r === "nurse" || r === "lab_technician") {
+      return [
+        "/patients",
+        "/appointments",
+        "/shifts",
+        "/exchanges",
+        "/notifications",
+        "/dashboard/stats",
+        "/activity",
+      ];
+    }
+    if (r === "receptionist") {
+      return [
+        "/patients",
+        "/appointments",
+        "/doctors",
+        "/doctor-schedules",
+        "/notifications",
+        "/dashboard/stats",
+        "/activity",
+      ];
+    }
+    if (r === "cashier") {
+      return ["/appointments", "/notifications", "/dashboard/stats", "/activity"];
+    }
+    if (r === "patient") {
+      return [
+        "/patients",
+        "/appointments",
+        "/notifications",
+        "/doctors",
+        "/doctor-schedules",
+        "/dashboard/stats",
+        "/activity",
+      ];
+    }
+    if (r === "pharmacist" || r === "inventory_manager" || r === "accountant") {
+      return ["/notifications", "/dashboard/stats", "/activity"];
+    }
+    // admin / facility_admin
+    return [
+      "/staff",
+      "/patients",
+      "/appointments",
+      "/shifts",
+      "/exchanges",
+      "/notifications",
+      "/dashboard/stats",
+      "/activity",
+    ];
+  }
+
   async function hydrateFromApi(session) {
     if (!session?.cookieAuth) return session;
 
@@ -276,31 +615,25 @@
     cachedStats = null;
     cachedActivity = [];
 
-    const results = await Promise.allSettled([
-      api("/staff"),
-      api("/patients"),
-      api("/appointments"),
-      api("/shifts"),
-      api("/exchanges"),
-      api("/notifications"),
-      api("/doctors"),
-      api("/doctor-schedules"),
-      api("/dashboard/stats"),
-      api("/activity"),
-    ]);
+    const paths = hydratePathsForRole(session.role);
+    const results = await Promise.allSettled(paths.map((p) => api(p)));
+    const byPath = Object.create(null);
+    let failed = 0;
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") byPath[paths[i]] = r.value;
+      else failed += 1;
+    });
 
-    const val = (i) => (results[i].status === "fulfilled" ? results[i].value : null);
-    const failed = results.filter((r) => r.status === "rejected").length;
-    const staff = val(0);
-    const patients = val(1);
-    const appointments = val(2);
-    const shifts = val(3);
-    const exchanges = val(4);
-    const notifications = val(5);
-    const doctors = val(6);
-    const schedules = val(7);
-    const stats = val(8);
-    const activity = val(9);
+    const staff = byPath["/staff"];
+    const patients = byPath["/patients"];
+    const appointments = byPath["/appointments"];
+    const shifts = byPath["/shifts"];
+    const exchanges = byPath["/exchanges"];
+    const notifications = byPath["/notifications"];
+    const doctors = byPath["/doctors"];
+    const schedules = byPath["/doctor-schedules"];
+    const stats = byPath["/dashboard/stats"];
+    const activity = byPath["/activity"];
 
     if (staff?.data) DB.staff = staff.data;
     if (patients?.data) {
@@ -339,6 +672,7 @@
     }
 
     session.source = "api";
+    session.hydratedAt = Date.now();
     session.hydrateFailed = failed;
     if (failed > 0) {
       session.hydrateWarning = failed + " workspace API request(s) failed — some lists may be empty.";
@@ -449,17 +783,26 @@
         body: JSON.stringify({ email, password, role: role || undefined }),
       });
       const session = toSession(body.user);
+      // Defer workspace data load to app boot — avoids double-fetch before redirect.
       writeSession(session);
-      await hydrateFromApi(session);
       return { ok: true, session };
     } catch (err) {
       if (err.status === 401 || err.status === 403) {
         return { ok: false, error: err.message || "Login failed." };
       }
-      // Full-stack product: API must be reachable (no silent offline login).
+      if (err.status === 429) {
+        return { ok: false, error: err.message || "Too many login attempts. Please wait and try again." };
+      }
+      // Network / wrong host — keep message short and actionable.
+      const unreachable =
+        !err.status ||
+        err.status === 0 ||
+        /failed to fetch|networkerror|load failed/i.test(String(err.message || ""));
       return {
         ok: false,
-        error: err.message || "Cannot reach the Filfilu API on this site. Start the app, then try again.",
+        error: unreachable
+          ? "Cannot reach the Filfilu API. Open http://127.0.0.1:8080/login (app must be running)."
+          : (err.message || "Login failed."),
       };
     }
   }
@@ -480,7 +823,6 @@
       });
       const session = toSession(body.user);
       writeSession(session);
-      await hydrateFromApi(session);
       return { ok: true, session };
     } catch (err) {
       if (err.status === 409 || err.status === 400 || err.status === 403) {
@@ -523,10 +865,8 @@
   }
 
   async function bootWorkspace() {
-    let session = readSession();
-    if (!session?.cookieAuth) {
-      session = await restoreSessionFromCookie();
-    }
+    // Always revalidate with the API — never trust sessionStorage role chrome alone.
+    let session = await restoreSessionFromCookie();
     if (!session || !normalizeRole(session.role)) {
       clearSession();
       location.href = "login.html";
@@ -549,7 +889,11 @@
   }
 
   function can(session, permission) {
-    return Boolean(session && (PERMISSIONS[session.role] || []).includes(permission));
+    if (!session) return false;
+    const perms = session.permissions && session.permissions.length
+      ? session.permissions
+      : PERMISSIONS[session.role] || [];
+    return perms.includes(permission);
   }
 
   function staffName(id) {
@@ -734,6 +1078,29 @@
     cleanupDuplicateAppointments,
     findDuplicateAppointmentGroups,
     logout,
+    logoutAll,
+    switchFacility,
+    changePassword,
+    listFacilities,
+    searchPatients,
+    getPatient,
+    registerPatient,
+    updatePatient,
+    patientStats,
+    checkPatientDuplicates,
+    createEncounter,
+    addMedicalHistory,
+    appointmentStats,
+    appointmentAvailability,
+    appointmentCalendar,
+    bookAppointment,
+    checkInAppointment,
+    cancelAppointment,
+    createWalkIn,
+    fetchQueue,
+    callNextQueue,
+    transitionQueue,
+    tryRefreshSession,
     session: readSession,
     requireAuth,
     can,

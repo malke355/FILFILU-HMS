@@ -1,0 +1,84 @@
+openapi: 3.0.3
+info:
+  title: Filfilu Patient Management API
+  version: "4.0.0"
+  description: Section 4 patient registration, search, medical history, encounters, and private documents.
+servers:
+  - url: http://127.0.0.1:8080/api
+paths:
+  /patients:
+    get:
+      summary: Search/list patients (facility-scoped, paginated)
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string, enum: [active, archived] }
+        - in: query
+          name: sort
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: limit
+          schema: { type: integer }
+      responses:
+        "200": { description: Paginated patient list }
+    post:
+      summary: Register patient (auto MRN)
+      responses:
+        "201": { description: Created }
+        "409": { description: Possible duplicates — acknowledgeDuplicates to proceed }
+  /patients/stats:
+    get:
+      summary: Facility patient dashboard stats
+      responses:
+        "200": { description: Counts and recent registrations }
+  /patients/duplicates:
+    post:
+      summary: Soft duplicate detection (never merges)
+      responses:
+        "200": { description: Potential matches }
+  /patients/{id}:
+    get:
+      summary: Patient profile
+      responses:
+        "200": { description: Profile }
+        "403": { description: Forbidden }
+        "404": { description: Not found in active facility }
+    patch:
+      summary: Update demographics / archive
+      responses:
+        "200": { description: Updated }
+  /patients/{id}/medical-history:
+    get:
+      summary: List medical history (clinical roles)
+    post:
+      summary: Add medical history entry
+  /patients/{id}/encounters:
+    get:
+      summary: List encounters
+    post:
+      summary: Create encounter
+  /patients/{id}/documents:
+    get:
+      summary: List document metadata
+    post:
+      summary: Upload document (base64 JSON, private storage)
+  /patients/{patientId}/documents/{docId}/download:
+    get:
+      summary: Authenticated download (no public URL)
+  /encounters/{id}:
+    patch:
+      summary: Update encounter status/notes
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: filfilu_token
+security:
+  - cookieAuth: []

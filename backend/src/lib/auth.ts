@@ -5,10 +5,14 @@ import type { Role } from "./roles.js";
 export type JwtPayload = {
   sub: string;
   email: string;
+  /** Facility-scoped role for the active facility (or admin for platform super_admin). */
   role: Role;
   name: string;
   /** Session generation — must match User.tokenVersion or the token is rejected. */
   tv: number;
+  /** Active facility for this session — required for tenant-scoped APIs. */
+  facilityId?: string | null;
+  platformRole?: string | null;
   staffId?: string | null;
   patientId?: string | null;
   ward?: string | null;
@@ -37,8 +41,11 @@ function secret() {
   return s;
 }
 
+/** bcrypt cost — default 12 (was 10). Override with BCRYPT_COST. */
 export async function hashPassword(password: string) {
-  return bcrypt.hash(password, 10);
+  const cost = Number(process.env.BCRYPT_COST || 12);
+  const rounds = Number.isFinite(cost) && cost >= 10 && cost <= 15 ? cost : 12;
+  return bcrypt.hash(password, rounds);
 }
 
 export async function verifyPassword(password: string, hash: string | null | undefined) {
@@ -46,10 +53,11 @@ export async function verifyPassword(password: string, hash: string | null | und
   return bcrypt.compare(password, hash);
 }
 
+/** Access JWT — default 15m (override JWT_EXPIRES_IN or ACCESS_TOKEN_TTL_SEC). */
 export function signToken(payload: JwtPayload) {
-  return jwt.sign(payload, secret(), {
-    expiresIn: (process.env.JWT_EXPIRES_IN || "7d") as SignOptions["expiresIn"],
-  });
+  const expiresIn = (process.env.JWT_EXPIRES_IN ||
+    `${Number(process.env.ACCESS_TOKEN_TTL_SEC || 15 * 60)}s`) as SignOptions["expiresIn"];
+  return jwt.sign(payload, secret(), { expiresIn });
 }
 
 export function verifyToken(token: string): JwtPayload {
